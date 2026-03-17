@@ -1,0 +1,165 @@
+# ====================================================================
+# IoT and ICS/SCADA Intrusion Detection System Rules
+# Compatible with Snort/Suricata
+# Designed for minimal false positives in industrial environments
+# ====================================================================
+
+# ====================================================================
+# IoT THREAT DETECTION RULES
+# ====================================================================
+
+# SSH Brute Force Attack Detection on IoT Devices
+# Detects multiple failed SSH login attempts within 60 seconds
+alert tcp any any -> $IOT_NETWORKS 22 (msg:"IoT SSH Brute Force Attack Detected"; flow:to_server,established; content:"SSH-"; depth:4; detection_filter:track by_src, count 5, seconds 60; threshold:type limit, track by_src, count 1, seconds 300; classtype:attempted-admin; sid:1000001; rev:1;)
+
+# Telnet Brute Force on IoT Devices
+# Many IoT devices still use telnet - detect brute force attempts
+alert tcp any any -> $IOT_NETWORKS 23 (msg:"IoT Telnet Brute Force Attack"; flow:to_server; content:"login"; nocase; detection_filter:track by_src, count 3, seconds 30; threshold:type limit, track by_src, count 1, seconds 180; classtype:attempted-admin; sid:1000002; rev:1;)
+
+# HTTP Basic Auth Brute Force on IoT Web Interfaces
+# Detects brute force on IoT device web management interfaces
+alert tcp any any -> $IOT_NETWORKS [80,8080,8081,8443] (msg:"IoT HTTP Basic Auth Brute Force"; flow:to_server,established; content:"Authorization: Basic"; http_header; detection_filter:track by_src, count 5, seconds 60; threshold:type limit, track by_src, count 1, seconds 300; classtype:attempted-admin; sid:1000003; rev:1;)
+
+# DNS Tunneling Detection - Suspicious Long DNS Queries
+# Detects potential DNS tunneling used for C2 communications
+alert udp any any -> any 53 (msg:"Potential DNS Tunneling - Long Query"; content:"|01 00 00 01|"; offset:4; depth:4; byte_test:2,>,50,12; threshold:type both, track by_src, count 10, seconds 60; classtype:trojan-activity; sid:1000004; rev:1;)
+
+# DNS Tunneling - High Frequency DNS Queries
+# Detects unusually high frequency DNS queries indicating tunneling
+alert udp any any -> any 53 (msg:"DNS Tunneling - High Frequency Queries"; content:"|01 00|"; depth:2; detection_filter:track by_src, count 50, seconds 60; threshold:type limit, track by_src, count 1, seconds 300; classtype:trojan-activity; sid:1000005; rev:1;)
+
+# Unauthorized Firmware Update Attempt
+# Detects TFTP-based firmware uploads to IoT devices
+alert udp any any -> $IOT_NETWORKS 69 (msg:"Unauthorized IoT Firmware Update via TFTP"; content:"|00 02|"; depth:2; content:".bin"; distance:0; nocase; threshold:type limit, track by_dst, count 1, seconds 3600; classtype:policy-violation; sid:1000006; rev:1;)
+
+# HTTP Firmware Upload Detection
+# Detects firmware uploads via HTTP POST
+alert tcp any any -> $IOT_NETWORKS [80,8080,443,8443] (msg:"IoT Firmware Upload via HTTP"; flow:to_server,established; content:"POST"; http_method; content:"firmware"; http_uri; nocase; content:"Content-Type: multipart/form-data"; http_header; threshold:type limit, track by_dst, count 1, seconds 1800; classtype:policy-violation; sid:1000007; rev:1;)
+
+# High-Frequency Telemetry to Unknown External IPs
+# Detects IoT devices sending excessive data to external networks
+alert tcp $IOT_NETWORKS any -> !$HOME_NET [1883,8883,80,443] (msg:"High-Frequency IoT Telemetry to External Network"; flow:to_server; detection_filter:track by_src, count 100, seconds 300; threshold:type limit, track by_src, count 1, seconds 600; classtype:policy-violation; sid:1000008; rev:1;)
+
+# MQTT Unauthorized Access
+# Detects MQTT connections without proper authentication
+alert tcp any any -> $IOT_NETWORKS 1883 (msg:"MQTT Unauthorized Connection Attempt"; flow:to_server; content:"|10|"; depth:1; byte_test:1,&,128,1; content:"|00 00|"; distance:2; within:2; threshold:type both, track by_src, count 5, seconds 300; classtype:attempted-admin; sid:1000009; rev:1;)
+
+# CoAP Unauthorized Access
+# Detects unauthorized CoAP requests to IoT devices
+alert udp any any -> $IOT_NETWORKS 5683 (msg:"CoAP Unauthorized Access Attempt"; content:"|40|"; depth:1; byte_test:1,>,3,1; detection_filter:track by_src, count 10, seconds 60; threshold:type limit, track by_src, count 1, seconds 300; classtype:attempted-admin; sid:1000010; rev:1;)
+
+# ====================================================================
+# ICS/SCADA THREAT DETECTION RULES
+# ====================================================================
+
+# Modbus Unauthorized Write Function Codes
+# Detects unauthorized write operations on Modbus devices
+alert tcp any any -> $ICS_NETWORKS 502 (msg:"Modbus Unauthorized Write Command"; flow:to_server,established; content:"|00 00 00 00 00|"; depth:5; byte_test:1,&,15,7; byte_test:1,>,4,7; byte_test:1,<,17,7; threshold:type limit, track by_src, count 1, seconds 60; classtype:attempted-admin; sid:1000011; rev:1;)
+
+# Modbus Exception Response - Potential Attack
+# Detects Modbus exception responses that might indicate attack attempts
+alert tcp $ICS_NETWORKS 502 -> any any (msg:"Modbus Exception Response - Potential Attack"; flow:to_client,established; content:"|00 00 00 00 00|"; depth:5; byte_test:1,&,128,7; threshold:type both, track by_dst, count 5, seconds 300; classtype:protocol-command-decode; sid:1000012; rev:1;)
+
+# DNP3 Unauthorized Control Operations
+# Detects unauthorized DNP3 control operations
+alert tcp any any -> $ICS_NETWORKS 20000 (msg:"DNP3 Unauthorized Control Operation"; flow:to_server,established; content:"|05 64|"; depth:2; byte_test:1,&,64,2; content:"|0C|"; distance:8; within:1; threshold:type limit, track by_src, count 1, seconds 300; classtype:attempted-admin; sid:1000013; rev:1;)
+
+# DNP3 Authentication Bypass Attempt
+# Detects attempts to bypass DNP3 authentication
+alert tcp any any -> $ICS_NETWORKS 20000 (msg:"DNP3 Authentication Bypass Attempt"; flow:to_server,established; content:"|05 64|"; depth:2; content:"|78|"; distance:0; byte_test:1,!&,8,10; threshold:type both, track by_src, count 3, seconds 180; classtype:attempted-admin; sid:1000014; rev:1;)
+
+# Ethernet/IP CIP Unauthorized Service Request
+# Detects unauthorized Common Industrial Protocol service requests
+alert tcp any any -> $ICS_NETWORKS 44818 (msg:"Ethernet/IP CIP Unauthorized Service Request"; flow:to_server,established; content:"|6F 00|"; depth:2; byte_test:2,>,100,24; byte_test:1,&,128,28; threshold:type both, track by_src, count 5, seconds 300; classtype:attempted-admin; sid:1000015; rev:1;)
+
+# ICS Network Scan Detection
+# Detects network scanning targeting ICS ports
+alert tcp any any -> $ICS_NETWORKS [102,502,20000,44818,2404,1911] (msg:"ICS Network Scan Detected"; flags:S; detection_filter:track by_src, count 10, seconds 60; threshold:type limit, track by_src, count 1, seconds 300; classtype:attempted-recon; sid:1000016; rev:1;)
+
+# SCADA HMI Unauthorized Access
+# Detects unauthorized access to SCADA HMI systems
+alert tcp any any -> $ICS_NETWORKS [800,8080,8000] (msg:"SCADA HMI Unauthorized Access"; flow:to_server,established; content:"GET"; http_method; content:"/scada"; http_uri; nocase; content:"User-Agent:"; http_header; pcre:"/User-Agent:\s*(?!.*authorized)/i"; threshold:type both, track by_src, count 3, seconds 180; classtype:attempted-admin; sid:1000017; rev:1;)
+
+# PLC Programming Software Detection
+# Detects unauthorized PLC programming attempts
+alert tcp any any -> $ICS_NETWORKS [9600,2455,1962] (msg:"Unauthorized PLC Programming Attempt"; flow:to_server,established; detection_filter:track by_src, count 3, seconds 60; threshold:type limit, track by_src, count 1, seconds 1800; classtype:attempted-admin; sid:1000018; rev:1;)
+
+# ICS Protocol State Violation - Modbus Function Code Mismatch
+# Detects state violations in Modbus communications
+alert tcp any any -> $ICS_NETWORKS 502 (msg:"Modbus State Violation - Invalid Function Code Sequence"; flow:to_server,established; content:"|00 00 00 00 00|"; depth:5; byte_test:1,>,23,7; threshold:type both, track by_flow, count 1, seconds 60; classtype:protocol-command-decode; sid:1000019; rev:1;)
+
+# Industrial Network Time Synchronization Attack
+# Detects attacks on time synchronization protocols used in ICS
+alert udp any any -> $ICS_NETWORKS 319 (msg:"ICS Time Sync Attack - PTP Manipulation"; content:"|00 02|"; depth:2; byte_test:1,&,8,0; detection_filter:track by_src, count 5, seconds 30; threshold:type limit, track by_src, count 1, seconds 300; classtype:attempted-dos; sid:1000020; rev:1;)
+
+# ====================================================================
+# ADVANCED THREAT DETECTION
+# ====================================================================
+
+# False Data Injection Attack - Sensor Value Anomaly
+# Detects potential false data injection on sensor readings
+alert tcp $ICS_NETWORKS any -> any any (msg:"Potential False Data Injection - Sensor Anomaly"; flow:established; content:"sensor"; nocase; pcre:"/temperature|pressure|flow|level/i"; byte_test:4,>,999999,0,relative; threshold:type both, track by_src, count 3, seconds 180; classtype:attempted-admin; sid:1000021; rev:1;)
+
+# Replay Attack Detection - Identical Command Repetition
+# Detects potential replay attacks on ICS commands
+alert tcp any any -> $ICS_NETWORKS [502,20000,44818] (msg:"Potential Replay Attack - Command Repetition"; flow:to_server,established; detection_filter:track by_src, count 5, seconds 30; threshold:type both, track by_src, count 1, seconds 60; classtype:attempted-admin; sid:1000022; rev:1;)
+
+# Lateral Movement in Industrial Network
+# Detects lateral movement patterns in ICS networks
+alert tcp $ICS_NETWORKS any -> $ICS_NETWORKS [135,139,445,3389] (msg:"Lateral Movement in ICS Network"; flow:to_server; flags:S; detection_filter:track by_src, count 3, seconds 300; threshold:type limit, track by_src, count 1, seconds 600; classtype:attempted-admin; sid:1000023; rev:1;)
+
+# Suspicious Outbound Communication from ICS
+# Detects suspicious outbound communications from ICS networks
+alert tcp $ICS_NETWORKS any -> !$HOME_NET [80,443,21,22,23,53] (msg:"Suspicious Outbound Communication from ICS Network"; flow:to_server; detection_filter:track by_src, count 10, seconds 300; threshold:type limit, track by_src, count 1, seconds 600; classtype:policy-violation; sid:1000024; rev:1;)
+
+# ICS Malware C2 Communication Pattern
+# Detects potential malware C2 communication patterns
+alert tcp $ICS_NETWORKS any -> !$HOME_NET any (msg:"ICS Malware C2 Communication Pattern"; flow:established; content:"User-Agent:"; http_header; pcre:"/User-Agent:\s*[A-Z]{4,8}\/\d\.\d/"; detection_filter:track by_src, count 5, seconds 300; threshold:type limit, track by_src, count 1, seconds 1800; classtype:trojan-activity; sid:1000025; rev:1;)
+
+# ====================================================================
+# PROTOCOL-SPECIFIC ANOMALY DETECTION
+# ====================================================================
+
+# Modbus TCP Length Field Manipulation
+# Detects manipulation of Modbus TCP length fields
+alert tcp any any -> $ICS_NETWORKS 502 (msg:"Modbus TCP Length Field Manipulation"; flow:to_server,established; byte_test:2,>,255,4; byte_test:2,<,6,4; threshold:type both, track by_flow, count 1, seconds 60; classtype:protocol-command-decode; sid:1000026; rev:1;)
+
+# DNP3 Fragment Flood Attack
+# Detects DNP3 fragment flood attacks
+alert tcp any any -> $ICS_NETWORKS 20000 (msg:"DNP3 Fragment Flood Attack"; flow:to_server,established; content:"|05 64|"; depth:2; byte_test:1,&,32,2; detection_filter:track by_src, count 20, seconds 60; threshold:type limit, track by_src, count 1, seconds 300; classtype:attempted-dos; sid:1000027; rev:1;)
+
+# Ethernet/IP Connection Limit Exhaustion
+# Detects attempts to exhaust Ethernet/IP connections
+alert tcp any any -> $ICS_NETWORKS 44818 (msg:"Ethernet/IP Connection Exhaustion Attack"; flow:to_server; flags:S; detection_filter:track by_src, count 50, seconds 60; threshold:type limit, track by_src, count 1, seconds 300; classtype:attempted-dos; sid:1000028; rev:1;)
+
+# ====================================================================
+# FILE SYSTEM MONITORING RULES
+# ====================================================================
+
+# Critical System File Modification
+# Detects modifications to critical system files
+alert tcp any any -> any any (msg:"Critical System File Modified"; content:"file_event"; content:"modified"; distance:0; content:"/etc/passwd"; distance:0; nocase; threshold:type limit, track by_src, count 1, seconds 60; classtype:system-call-detect; sid:1000029; rev:1;)
+
+# Configuration File Changes
+# Detects changes to configuration files
+alert tcp any any -> any any (msg:"Configuration File Modified"; content:"file_event"; content:"modified"; distance:0; pcre:"/\.(conf|cfg|ini|xml|json)/i"; threshold:type limit, track by_src, count 1, seconds 60; classtype:system-call-detect; sid:1000030; rev:1;)
+
+# Sensitive File Access
+# Detects access to sensitive files
+alert tcp any any -> any any (msg:"Sensitive File Accessed"; content:"file_event"; content:"accessed"; distance:0; pcre:"/(password|secret|key|cert|private)/i"; threshold:type limit, track by_src, count 1, seconds 60; classtype:system-call-detect; sid:1000031; rev:1;)
+
+# File Deletion Event
+# Detects file deletion events
+alert tcp any any -> any any (msg:"File Deletion Detected"; content:"file_event"; content:"deleted"; distance:0; content:"user:"; distance:0; threshold:type limit, track by_src, count 1, seconds 30; classtype:system-call-detect; sid:1000032; rev:1;)
+
+# Mass File Operations
+# Detects mass file operations that could indicate malware activity
+alert tcp any any -> any any (msg:"Mass File Operations Detected"; content:"file_event"; detection_filter:track by_src, count 100, seconds 60; threshold:type limit, track by_src, count 1, seconds 300; classtype:system-call-detect; sid:1000033; rev:1;)
+
+# ====================================================================
+# NETWORK VARIABLES DEFINITION
+# ====================================================================
+# var IOT_NETWORKS [192.168.1.0/24,10.0.1.0/24,172.16.1.0/24]
+# var ICS_NETWORKS [192.168.100.0/24,10.0.100.0/24,172.16.100.0/24]
+# var HOME_NET [192.168.0.0/16,10.0.0.0/8,172.16.0.0/12]
+# ====================================================================

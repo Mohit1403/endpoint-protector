@@ -1,0 +1,5 @@
+python-socketio[client]>=5.10.0
+psutil>=5.9.0
+watchdog>=3.0.0
+pyudev>=0.24.0; sys_platform == "linux"
+pywin32>=306; sys_platform == "win32"

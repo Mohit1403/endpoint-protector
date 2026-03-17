@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoPentrix</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-shield-alt"></i> AutoPentrix
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" onclick="showSection('scanner'); return false;">
+                            <i class="fas fa-search"></i> Scanner
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('crypto'); return false;">
+                            <i class="fas fa-lock"></i> Cryptography
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('virustotal'); return false;">
+                            <i class="fas fa-virus"></i> VirusTotal
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('ids'); return false;">
+                            <i class="fas fa-shield-halved"></i> Endpoint Protector
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('reports'); return false;">
+                            <i class="fas fa-file-pdf"></i> Reports
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('history'); return false;">
+                            <i class="fas fa-history"></i> History
+                        </a>
+                    </li>
+                </ul>
+                <div class="navbar-nav">
+                    <span class="navbar-text">
+                        <i class="fas fa-user"></i> User: Admin
+                    </span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <!-- Scanner Section -->
+        <div id="scanner-section" class="section active">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-cog"></i> Scan Configuration</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="scan-form">
+                                <div class="mb-3">
+                                    <label for="pentester-name" class="form-label">Penetration Tester</label>
+                                    <input type="text" class="form-control" id="pentester-name" 
+                                           placeholder="Enter your name" value="Security Analyst">
+                                    <div class="form-text">Your name will appear in the generated report</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="target-input" class="form-label">Target(s)</label>
+                                    <input type="text" class="form-control" id="target-input" 
+                                           placeholder="IP, domain, or URL" required>
+                                    <div class="form-text">Enter IP address, domain, or URL to scan</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="scan-type" class="form-label">Scan Type</label>
+                                    <select class="form-select" id="scan-type">
+                                        <option value="-sT -T4">Quick TCP Connect Scan</option>
+                                        <option value="-sV -sC -T4">Standard Service Detection</option>
+                                        <option value="-sT -sV -sC -A -T4">Comprehensive Scan</option>
+                                        <option value="-p- -sT -T4">Full Port TCP Scan</option>
+                                        <option value="--top-ports 1000 -sT -T4">Top 1000 Ports</option>
+                                        <option value="-sn">Ping Sweep (Host Discovery)</option>
+                                        <option value="-sT -p 21,22,23,25,53,80,110,443,993,995 -T4">Common Ports Scan</option>
+                                        <option value="custom">Custom Command</option>
+                                    </select>
+                                    <div class="form-text">All scans optimized for unprivileged execution</div>
+                                </div>
+
+                                <div class="mb-3" id="custom-command-div" style="display: none;">
+                                    <label for="custom-command" class="form-label">Custom Nmap Command</label>
+                                    <input type="text" class="form-control" id="custom-command" 
+                                           placeholder="Enter custom nmap flags">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="nse-scripts" class="form-label">NSE Scripts</label>
+                                    <select class="form-select" id="nse-scripts">
+                                        <option value="">Default Scripts</option>
+                                        <option value="--script vuln">Vulnerability Scripts</option>
+                                        <option value="--script auth">Authentication Scripts</option>
+                                        <option value="--script discovery">Discovery Scripts</option>
+                                        <option value="--script safe">Safe Scripts Only</option>
+                                        <option value="--script intrusive">Intrusive Scripts</option>
+                                    </select>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="fas fa-play"></i> Start Scan
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h6><i class="fas fa-info-circle"></i> Scan Status</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="scan-status" class="text-muted">Ready to scan</div>
+                            <div class="progress mt-2" style="height: 10px;">
+                                <div id="scan-progress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-8">
+                    <div class="card h-100">
+                        <div class="card-header d-flex justify-content-between">
+                            <h5><i class="fas fa-terminal"></i> Live Output</h5>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="clearOutput()">
+                                    <i class="fas fa-trash"></i> Clear
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="downloadReport()">
+                                    <i class="fas fa-download"></i> Download Report
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="output-container" class="output-container">
+                                <div class="text-muted">Scan output will appear here...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cryptography Section -->
+        <div id="crypto-section" class="section">
+            <div class="row g-3 crypto-tiles">
+                <div class="col-xl-3 col-lg-6">
+                    <div class="card tile-card h-100">
+                        <div class="card-header tile-header">
+                            <h5><i class="fas fa-lock"></i> Encryption</h5>
+                        </div>
+                        <div class="card-body tile-body">
+                            <form id="encrypt-form">
+                                <div class="mb-3">
+                                    <label for="encrypt-algorithm" class="form-label">Algorithm</label>
+                                    <select class="form-select" id="encrypt-algorithm">
+                                        <option value="aes-256-cbc">AES-256-CBC (Recommended)</option>
+                                        <option value="aes-256-gcm">AES-256-GCM (Authenticated)</option>
+                                        <option value="aes-128-cbc">AES-128-CBC</option>
+                                        <option value="aes-192-cbc">AES-192-CBC</option>
+                                        <option value="3des">3DES (Legacy)</option>
+                                        <option value="des">DES (Disabled)</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="encrypt-key" class="form-label">Key</label>
+                                    <input type="text" class="form-control" id="encrypt-key" 
+                                           placeholder="Enter encryption key" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="plaintext" class="form-label">Plaintext</label>
+                                    <textarea class="form-control" id="plaintext" rows="4" 
+                                              placeholder="Enter text to encrypt"></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-success w-100">
+                                    <i class="fas fa-lock"></i> Encrypt
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-lg-6">
+                    <div class="card tile-card h-100">
+                        <div class="card-header tile-header">
+                            <h5><i class="fas fa-unlock"></i> Decryption</h5>
+                        </div>
+                        <div class="card-body tile-body">
+                            <form id="decrypt-form">
+                                <div class="mb-3">
+                                    <label for="decrypt-algorithm" class="form-label">Algorithm</label>
+                                    <select class="form-select" id="decrypt-algorithm">
+                                        <option value="aes-256-cbc">AES-256-CBC (Recommended)</option>
+                                        <option value="aes-256-gcm">AES-256-GCM (Authenticated)</option>
+                                        <option value="aes-128-cbc">AES-128-CBC</option>
+                                        <option value="aes-192-cbc">AES-192-CBC</option>
+                                        <option value="3des">3DES (Legacy)</option>
+                                        <option value="des">DES (Disabled)</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="decrypt-key" class="form-label">Key</label>
+                                    <input type="text" class="form-control" id="decrypt-key" 
+                                           placeholder="Enter decryption key" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="ciphertext" class="form-label">Ciphertext</label>
+                                    <textarea class="form-control" id="ciphertext" rows="4" 
+                                              placeholder="Enter text to decrypt"></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-warning w-100">
+                                    <i class="fas fa-unlock"></i> Decrypt
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-lg-6">
+                    <div class="card tile-card h-100">
+                        <div class="card-header tile-header">
+                            <h5><i class="fas fa-code"></i> Encoding/Decoding</h5>
+                        </div>
+                        <div class="card-body tile-body">
+                            <form id="encoding-form">
+                                <div class="mb-3">
+                                    <label for="encoding-type" class="form-label">Encoding Type</label>
+                                    <select class="form-select" id="encoding-type">
+                                        <option value="base64">Base64</option>
+                                        <option value="url">URL Encoding</option>
+                                        <option value="hex">Hexadecimal</option>
+                                        <option value="binary">Binary</option>
+                                        <option value="caesar">Caesar Cipher</option>
+                                        <option value="rot13">ROT13</option>
+                                        <option value="atbash">Atbash Cipher</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3" id="shift-input-div" style="display: none;">
+                                    <label for="shift-input" class="form-label">Shift Value</label>
+                                    <input type="number" class="form-control" id="shift-input" value="3" min="1" max="25">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="encode-text" class="form-label">Text to Encode</label>
+                                    <textarea class="form-control" id="encode-text" rows="3" 
+                                              placeholder="Enter text to encode"></textarea>
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button type="submit" class="btn btn-info">
+                                        <i class="fas fa-arrow-up"></i> Encode
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info" id="decode-btn">
+                                        <i class="fas fa-arrow-down"></i> Decode
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-xl-3 col-lg-6">
+                    <div class="card tile-card h-100">
+                        <div class="card-header tile-header">
+                            <h5><i class="fas fa-key"></i> Key Generation & Hashing</h5>
+                        </div>
+                        <div class="card-body tile-body">
+                            <div class="mb-3">
+                                <label for="hash-text" class="form-label">Text to Hash</label>
+                                <textarea class="form-control" id="hash-text" rows="2" 
+                                          placeholder="Enter text to hash"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="hash-algorithm" class="form-label">Hash Algorithm</label>
+                                <select class="form-select" id="hash-algorithm">
+                                    <option value="sha256">SHA-256</option>
+                                    <option value="sha1">SHA-1</option>
+                                    <option value="md5">MD5</option>
+                                    <option value="sha512">SHA-512</option>
+                                </select>
+                            </div>
+                            <div class="d-grid gap-2 mb-3">
+                                <button type="button" class="btn btn-warning" id="hash-btn">
+                                    <i class="fas fa-fingerprint"></i> Generate Hash
+                                </button>
+                                <button type="button" class="btn btn-success" id="generate-key-btn">
+                                    <i class="fas fa-key"></i> Generate Random Key
+                                </button>
+                            </div>
+                            <div class="mb-3">
+                                <label for="key-length" class="form-label">Key Length (bytes)</label>
+                                <input type="number" class="form-control" id="key-length" value="32" min="8" max="64">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card crypto-results">
+                        <div class="card-header">
+                            <h5><i class="fas fa-eye"></i> Results</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="crypto-result" class="result-container">
+                                Results will appear here...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VirusTotal Section -->
+        <div id="virustotal-section" class="section">
+            <div class="row g-3 vt-panel">
+                <div class="col-lg-5">
+                    <div class="card vt-card h-100">
+                        <div class="card-header">
+                            <h5><i class="fas fa-virus"></i> VirusTotal Scanner</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="nav nav-tabs vt-nav" id="vt-nav" role="tablist">
+                                <button class="nav-link active" id="file-tab" data-bs-toggle="tab" 
+                                        data-bs-target="#file-pane" type="button" role="tab">File</button>
+                                <button class="nav-link" id="url-tab" data-bs-toggle="tab" 
+                                        data-bs-target="#url-pane" type="button" role="tab">URL</button>
+                                <button class="nav-link" id="hash-tab" data-bs-toggle="tab" 
+                                        data-bs-target="#hash-pane" type="button" role="tab">Hash</button>
+                            </div>
+                            
+                            <div class="tab-content mt-3" id="vt-content">
+                                <div class="tab-pane fade show active" id="file-pane" role="tabpanel">
+                                    <form id="file-scan-form">
+                                        <div class="mb-3">
+                                            <label for="file-upload" class="form-label">Upload File</label>
+                                            <input type="file" class="form-control" id="file-upload" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-danger w-100 vt-scan-btn">
+                                            <i class="fas fa-upload"></i> Scan File
+                                        </button>
+                                    </form>
+                                </div>
+                                
+                                <div class="tab-pane fade" id="url-pane" role="tabpanel">
+                                    <form id="url-scan-form">
+                                        <div class="mb-3">
+                                            <label for="url-input" class="form-label">URL</label>
+                                            <input type="url" class="form-control" id="url-input" 
+                                                   placeholder="https://example.com" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-danger w-100 vt-scan-btn">
+                                            <i class="fas fa-globe"></i> Scan URL
+                                        </button>
+                                    </form>
+                                </div>
+                                
+                                <div class="tab-pane fade" id="hash-pane" role="tabpanel">
+                                    <form id="hash-scan-form">
+                                        <div class="mb-3">
+                                            <label for="hash-input" class="form-label">Hash</label>
+                                            <input type="text" class="form-control" id="hash-input" 
+                                                   placeholder="Enter MD5, SHA1, or SHA256 hash" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-danger w-100 vt-scan-btn">
+                                            <i class="fas fa-fingerprint"></i> Scan Hash
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-7">
+                    <div class="card h-100 vt-results-card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-chart-bar"></i> Scan Results</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="vt-results" class="result-container">
+                                VirusTotal scan results will appear here...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Endpoint Protector Section -->
+        <div id="ids-section" class="section">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-shield-halved me-2"></i>Endpoint Protector</h5>
+                            <span id="ids-status-badge" class="badge bg-success">ACTIVE</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <button id="ids-refresh-btn" class="btn btn-primary">
+                                    <i class="fas fa-sync me-2"></i>Refresh Endpoint Data
+                                </button>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <h6><i class="fas fa-link me-2"></i>Connection Status</h6>
+                                <div id="ids-health" class="small">
+                                    <div class="mb-2">
+                                        <span class="text-muted">Backend:</span> 
+                                        <span id="health-status" class="badge bg-success ms-2">Connected</span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <span class="text-muted">Agents:</span> 
+                                        <span id="endpoint-total" class="fw-bold text-info ms-2">0</span> 
+                                        <span class="text-muted">connected</span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <span class="text-muted">Online:</span> 
+                                        <span id="endpoint-online" class="fw-bold text-success ms-2">0</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted">Last Update:</span> 
+                                        <span id="health-uptime" class="text-muted ms-2">Just now</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h6><i class="fas fa-network-wired"></i> Fleet Overview</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row text-center">
+                                <div class="col-6 mb-3">
+                                    <div class="display-6 text-info" id="endpoint-total">0</div>
+                                    <small class="text-muted text-uppercase">Protected Endpoints</small>
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <div class="display-6 text-success" id="endpoint-online">0</div>
+                                    <small class="text-muted text-uppercase">Online</small>
+                                </div>
+                                <div class="col-6">
+                                    <div class="display-6 text-danger" id="endpoint-offline">0</div>
+                                    <small class="text-muted text-uppercase">Offline</small>
+                                </div>
+                                <div class="col-6">
+                                    <div class="display-6 text-warning" id="endpoint-critical">0</div>
+                                    <small class="text-muted text-uppercase">High Risk</small>
+                                </div>
+                            </div>
+                            <div class="text-center mt-3">
+                                <span class="badge bg-primary p-2">
+                                    Health Score: <span id="endpoint-risk-score">0%</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h6><i class="fas fa-chart-bar"></i> Threat Statistics</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="ids-statistics" class="small">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <div class="text-center">
+                                            <div class="h5 mb-0 text-primary" id="stats-total">0</div>
+                                            <div class="small text-muted">Total Threats</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-center">
+                                            <div class="h5 mb-0 text-warning" id="stats-24h">0</div>
+                                            <div class="small text-muted">Last 24h</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-4">
+                                        <div class="text-center">
+                                            <div class="h6 mb-0 text-danger" id="stats-critical">0</div>
+                                            <div class="small text-muted">Critical</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-center">
+                                            <div class="h6 mb-0 text-warning" id="stats-high">0</div>
+                                            <div class="small text-muted">High</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-center">
+                                            <div class="h6 mb-0 text-info" id="stats-medium">0</div>
+                                            <div class="small text-muted">Medium</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between">
+                            <h5><i class="fas fa-network-wired"></i> Endpoint Mission Control</h5>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-secondary" id="endpoint-sync-status">Idle</span>
+                                <button class="btn btn-sm btn-outline-light" onclick="refreshEndpointProtectorData()" title="Refresh agents, overview and alerts">
+                                    <i class="fas fa-rotate"></i> Sync
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                                <div class="input-group input-group-sm" style="max-width: 320px;">
+                                    <span class="input-group-text bg-dark text-muted border-secondary"><i class="fas fa-magnifying-glass"></i></span>
+                                    <input id="endpoint-search" type="text" class="form-control bg-dark text-white border-secondary" placeholder="Search hostname / agentId / IP">
+                                </div>
+                                <select id="endpoint-status-filter" class="form-select form-select-sm bg-dark text-white border-secondary" style="max-width: 180px;">
+                                    <option value="ALL" selected>All statuses</option>
+                                    <option value="ONLINE">Online</option>
+                                    <option value="DEGRADED">Degraded</option>
+                                    <option value="OFFLINE">Offline</option>
+                                </select>
+                                <span class="text-muted small ms-auto" id="endpoint-visible-count">0 visible</span>
+                            </div>
+                            <div id="endpoint-agents-grid" class="endpoint-grid">
+                                <div class="text-muted text-center">No endpoint agents reporting yet.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            
+            <div class="row mt-3">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-chart-line me-2"></i>Resource Usage Trends</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <h6>CPU Usage %</h6>
+                                    <div style="height: 220px; max-height: 220px;">
+                                        <canvas id="cpuUsageChart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Memory Usage %</h6>
+                                    <div style="height: 220px; max-height: 220px;">
+                                        <canvas id="memoryUsageChart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Network Traffic (MB)</h6>
+                                    <div style="height: 220px; max-height: 220px;">
+                                        <canvas id="networkTrafficChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-wave-square me-2"></i>Live Telemetry Feed</h5>
+                            <button class="btn btn-sm btn-outline-light" onclick="refreshEndpointProtectorData()" title="Refresh">
+                                <i class="fas fa-sync"></i>
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="endpoint-alerts" class="timeline-container" style="max-height: 500px; overflow-y: auto;">
+                                <div class="text-center py-5">
+                                    <i class="fas fa-inbox fa-2x text-muted mb-2"></i>
+                                    <div class="text-muted">No telemetry events yet. Events will appear here when agents send data.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-calendar-check me-2"></i>Windows Event Log</h5>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-secondary" id="windows-events-count">0</span>
+                                <button class="btn btn-sm btn-outline-light" onclick="refreshWindowsEvents()" title="Refresh">
+                                    <i class="fas fa-sync"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2 align-items-end mb-2">
+                                <div class="col-6 col-lg-3">
+                                    <label class="form-label small text-muted mb-1">From</label>
+                                    <input id="win-events-from" type="date" class="form-control form-control-sm bg-dark text-white border-secondary">
+                                </div>
+                                <div class="col-6 col-lg-3">
+                                    <label class="form-label small text-muted mb-1">To</label>
+                                    <input id="win-events-to" type="date" class="form-control form-control-sm bg-dark text-white border-secondary">
+                                </div>
+                                <div class="col-12 col-lg-2">
+                                    <label class="form-label small text-muted mb-1">Event ID</label>
+                                    <input id="win-events-id" type="text" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="e.g. 4625">
+                                </div>
+                                <div class="col-12 col-lg-2">
+                                    <label class="form-label small text-muted mb-1">Computer / Agent / IP</label>
+                                    <input id="win-events-host" type="text" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="hostname / agentId / IP">
+                                </div>
+                                <div class="col-12 col-lg-2 d-flex gap-2">
+                                    <button class="btn btn-sm btn-outline-light flex-grow-1" onclick="resetWindowsEventFilters()" title="Reset filters">
+                                        <i class="fas fa-eraser me-1"></i>Reset
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger flex-grow-1" onclick="clearWindowsEvents()" title="Clear events from dashboard (does not affect endpoint)">
+                                        <i class="fas fa-broom me-1"></i>Clear
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                                <button class="btn btn-sm btn-outline-success" onclick="downloadWindowsEventsPdf(false)" title="Download ALL Windows events as PDF">
+                                    <i class="fas fa-file-pdf me-1"></i>Download All (PDF)
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="downloadWindowsEventsPdf(true)" title="Download FILTERED Windows events as PDF">
+                                    <i class="fas fa-filter me-1"></i>Download Filtered (PDF)
+                                </button>
+                                <span class="ms-auto text-muted small" id="windows-events-filtered-count">0 shown</span>
+                            </div>
+                        </div>
+                        <div class="card-body p-0 pt-0">
+                            <div id="windows-events-container" class="timeline-container" style="max-height: 500px; overflow-y: auto;">
+                                <div class="text-center py-5">
+                                    <i class="fas fa-windows fa-2x text-muted mb-2"></i>
+                                    <div class="text-muted">Windows Event Log events will appear here</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reports Section -->
+        <div id="reports-section" class="section">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-file-pdf"></i> Generated Reports</h5>
+                </div>
+                <div class="card-body">
+                    <div id="reports-list">
+                        <div class="text-muted">No reports generated yet.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Section -->
+        <div id="history-section" class="section">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-history"></i> Scan History</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Target</th>
+                                    <th>Scan Type</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table">
+                                <tr>
+                                    <td colspan="5" class="text-muted text-center">No scan history available</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsPDF/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

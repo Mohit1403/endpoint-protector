@@ -1,0 +1,30 @@
+services:
+  pentest-tool:
+    build:
+      context: .
+      dockerfile: Dockerfile.fixed
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs  
+      - ./uploads:/app/uploads
+      - ./temp:/app/temp
+    environment:
+      - NODE_ENV=development
+      - JWT_SECRET=your_jwt_secret_change_this
+      - VIRUSTOTAL_API_KEY=your_virustotal_api_key
+    networks:
+      - pentest-network
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  pentest-network:
+    driver: bridge

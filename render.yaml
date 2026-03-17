@@ -1,0 +1,38 @@
+# Render service definition for your Node + Nmap automation tool
+# Update `name`, `branch`, and add any secrets in the Render dashboard (do NOT commit secrets here).
+services:
+  - type: web
+    # Main AutoPentrix / Endpoint Protector dashboard (Node.js + Socket.IO + Nmap + VirusTotal)
+    name: autopentrix-dashboard        # you can change this name in Render if you like
+    env: docker
+    branch: main                 # change to your deploy branch if different
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    plan: free
+    disk:
+      name: reports-data
+      mountPath: /var/pentest-data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: PERSISTENT_STORAGE_PATH
+        value: /var/pentest-data
+      # Agent connectivity (set this in your agent environment on endpoints):
+      #   ENDPOINT_PROTECTOR_URL=https://<your-service>.onrender.com
+      #
+      # Optionally set these in Render (Dashboard -> Environment) to enforce org binding:
+      #   ENDPOINT_ORGANIZATION_ID=your-org-id
+      #   ENDPOINT_API_KEY=your-api-key
+      # IMPORTANT: Add your real VirusTotal key in Render dashboard (Settings → Environment):
+      #   VIRUSTOTAL_API_KEY = your_real_api_key_here
+      # DO NOT commit the actual key into this file.
+    # Health check should be a fast endpoint in your app that returns HTTP 200
+    healthCheckPath: /health
+
+# Notes:
+#  - Do NOT store secrets (API keys, DB passwords) in this file. Add them in the Render dashboard under Settings -> Environment.
+#  - If your repo branch is different (e.g., 'develop'), change 'branch' accordingly.
+#  - If you want Render to automatically create the service, connect this repository to Render and enable "Create from render.yaml" during setup.

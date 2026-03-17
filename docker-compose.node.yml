@@ -1,0 +1,31 @@
+services:
+  pentest-tool:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./reports:/usr/src/app/reports
+      - ./logs:/usr/src/app/logs
+      - ./uploads:/usr/src/app/uploads
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=your_jwt_secret_change_this
+      - VIRUSTOTAL_API_KEY=your_virustotal_api_key
+    networks:
+      - pentest-network
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+networks:
+  pentest-network:
+    driver: bridge

@@ -1,0 +1,11 @@
+{
+  "dns": ["8.8.8.8", "8.8.4.4", "1.1.1.1"],
+  "registry-mirrors": [
+    "https://mirror.gcr.io",
+    "https://registry.docker-cn.com"
+  ],
+  "max-concurrent-downloads": 3,
+  "max-concurrent-uploads": 3,
+  "experimental": false,
+  "debug": false
+}

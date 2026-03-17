@@ -1,0 +1,51 @@
+# Use Node.js base image with Alpine Linux for smaller size and nmap support
+FROM node:18-alpine
+
+# Set environment variables
+ENV NODE_ENV=production
+
+# Install system dependencies including nmap
+RUN apk update && apk add --no-cache \
+    nmap \
+    nmap-scripts \
+    curl \
+    python3 \
+    py3-pip \
+    git \
+    bash \
+    && rm -rf /var/cache/apk/*
+
+# Create app directory
+WORKDIR /usr/src/app
+
+# Copy package files
+COPY package*.json ./
+
+# Install Node.js dependencies
+RUN npm install --production --silent
+
+# Copy application code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p /usr/src/app/reports \
+    && mkdir -p /usr/src/app/logs \
+    && mkdir -p /usr/src/app/uploads \
+    && mkdir -p /usr/src/app/temp
+
+# Set proper permissions
+RUN chmod +x /usr/bin/nmap \
+    && chown -R node:node /usr/src/app
+
+# Switch to non-root user for security
+USER node
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/ || exit 1
+
+# Start the application
+CMD ["node", "index.js"]

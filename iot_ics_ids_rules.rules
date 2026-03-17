@@ -1,0 +1,194 @@
+# =============================================================================
+# IoT and ICS/SCADA Intrusion Detection System Rules
+# Compatible with Suricata/Snort
+# Designed for minimal false positives and robust threat detection
+# =============================================================================
+
+# =============================================================================
+# CATEGORY 1: IoT THREAT DETECTION
+# =============================================================================
+
+# SSH Brute Force Detection - Multiple failed attempts from same source
+# Detects rapid SSH connection attempts indicating brute force attacks
+drop tcp any any -> $HOME_NET 22 (msg:"IoT ALERT - SSH Brute Force Attack Detected"; flow:to_server,established; content:"SSH-"; depth:4; detection_filter:track by_src, count 5, seconds 60; threshold:type threshold, track by_src, count 5, seconds 60; classtype:attempted-admin; sid:1000001; rev:1;)
+
+# HTTP/HTTPS Brute Force on IoT Management Interfaces
+# Monitors for rapid POST requests to common IoT login endpoints
+alert tcp any any -> $HOME_NET [80,443,8080,8443] (msg:"IoT ALERT - HTTP Brute Force on Management Interface"; flow:to_server,established; http_method; content:"POST"; http_uri; pcre:"/\/(login|admin|api\/auth|cgi-bin\/luci)/i"; detection_filter:track by_src, count 10, seconds 120; threshold:type threshold, track by_src, count 10, seconds 120; classtype:web-application-attack; sid:1000002; rev:1;)
+
+# DNS Tunneling Detection - Unusually long DNS queries
+# Detects potential command and control via DNS tunneling
+alert udp any any -> any 53 (msg:"IoT ALERT - Potential DNS Tunneling Detected"; content:"|01 00 00 01|"; offset:2; depth:4; byte_test:2,>,50,12; threshold:type threshold, track by_src, count 3, seconds 300; classtype:trojan-activity; sid:1000003; rev:1;)
+
+# Unauthorized Firmware Update Attempts
+# Detects TFTP or HTTP firmware uploads to IoT devices
+alert tcp any any -> $HOME_NET any (msg:"IoT ALERT - Unauthorized Firmware Update Attempt"; flow:to_server; http_uri; pcre:"/\/(firmware|update|upgrade).*\.(bin|img|fw|hex)$/i"; http_method; content:"POST"; classtype:policy-violation; sid:1000004; rev:1;)
+
+# High Frequency Telemetry to External IPs
+# Monitors for excessive data transmission to unknown destinations
+alert tcp $HOME_NET any -> !$HOME_NET [80,443,8883,1883] (msg:"IoT ALERT - High Frequency Data Exfiltration"; flow:to_server; dsize:>100; detection_filter:track by_src, count 50, seconds 60; threshold:type threshold, track by_src, count 50, seconds 60; classtype:policy-violation; sid:1000005; rev:1;)
+
+# IoT Device Scanning Detection
+# Detects port scanning targeting common IoT service ports
+alert tcp any any -> $HOME_NET [23,80,443,502,2404,8080,8443,9100] (msg:"IoT ALERT - IoT Port Scan Detected"; flags:S,!A; detection_filter:track by_src, count 5, seconds 60; threshold:type threshold, track by_src, count 5, seconds 60; classtype:attempted-recon; sid:1000006; rev:1;)
+
+# Suspicious MQTT Traffic
+# Monitors for unauthorized MQTT publish/subscribe operations
+alert tcp any any -> $HOME_NET [1883,8883] (msg:"IoT ALERT - Unauthorized MQTT Operations"; flow:to_server,established; content:"|30|"; depth:1; byte_test:1,>,50,1; detection_filter:track by_src, count 20, seconds 300; classtype:policy-violation; sid:1000007; rev:1;)
+
+# =============================================================================
+# CATEGORY 2: ICS/SCADA THREAT DETECTION  
+# =============================================================================
+
+# Unauthorized Modbus Write Commands
+# Detects write operations to critical Modbus registers
+alert tcp any any -> $HOME_NET 502 (msg:"ICS ALERT - Unauthorized Modbus Write Command"; flow:to_server,established; content:"|00 01 00 00 00|"; depth:5; byte_test:1,&,0x80,7; byte_test:1,=,0x06,7; classtype:attempted-admin; sid:2000001; rev:1;)
+
+# Invalid Modbus Function Codes
+# Detects use of reserved or dangerous Modbus function codes  
+alert tcp any any -> $HOME_NET 502 (msg:"ICS ALERT - Invalid Modbus Function Code"; flow:to_server,established; content:"|00 01 00 00 00|"; depth:5; byte_test:1,>,127,7; classtype:protocol-command-decode; sid:2000002; rev:1;)
+
+# DNP3 Unauthorized Control Operations
+# Monitors for unauthorized DNP3 control and configuration commands
+alert tcp any any -> $HOME_NET 20000 (msg:"ICS ALERT - DNP3 Unauthorized Control Command"; flow:to_server,established; content:"|05 64|"; depth:2; byte_test:1,&,0x20,3; classtype:attempted-admin; sid:2000003; rev:1;)
+
+# SCADA Register Access Anomaly
+# Detects access to critical system registers outside normal hours
+alert tcp any any -> $HOME_NET [502,2404,44818] (msg:"ICS ALERT - Off-Hours SCADA Register Access"; flow:to_server,established; time:"18:00:00-06:00:00"; classtype:policy-violation; sid:2000004; rev:1;)
+
+# PLC State Violation Detection
+# Monitors for rapid state changes in PLC operations
+alert tcp any any -> $HOME_NET 502 (msg:"ICS ALERT - Rapid PLC State Changes Detected"; flow:to_server,established; content:"|00 01 00 00 00|"; depth:5; byte_test:1,=,0x0F,7; detection_filter:track by_dst, count 10, seconds 30; classtype:attempted-admin; sid:2000005; rev:1;)
+
+# EtherNet/IP Unauthorized Configuration Changes
+# Detects configuration modifications via EtherNet/IP protocol
+alert tcp any any -> $HOME_NET 44818 (msg:"ICS ALERT - EtherNet/IP Configuration Change"; flow:to_server,established; content:"|00 00 00 00|"; offset:20; depth:4; byte_test:1,=,0x52,24; classtype:attempted-admin; sid:2000006; rev:1;)
+
+# Unauthorized SCADA System Access
+# Monitors for connections from unauthorized IP ranges
+alert tcp !$AUTHORIZED_ICS_NET any -> $HOME_NET [502,2404,20000,44818] (msg:"ICS ALERT - Unauthorized SCADA System Access"; flow:to_server; threshold:type limit, track by_src, count 1, seconds 3600; classtype:policy-violation; sid:2000007; rev:1;)
+
+# =============================================================================
+# CATEGORY 3: ADVANCED PERSISTENT THREATS (APT)
+# =============================================================================
+
+# Suspicious Encrypted Traffic Patterns
+# Detects potential C2 communication in encrypted channels
+alert tcp $HOME_NET any -> !$HOME_NET [443,993,995] (msg:"APT ALERT - Suspicious Encrypted C2 Pattern"; flow:to_server,established; dsize:>200; detection_filter:track by_src, count 5, seconds 300; flowbits:set,encrypted_c2; threshold:type threshold, track by_src, count 5, seconds 300; classtype:trojan-activity; sid:3000001; rev:1;)
+
+# Lateral Movement Detection
+# Monitors for suspicious internal network scanning
+alert tcp $HOME_NET any -> $HOME_NET [135,139,445,3389,5985] (msg:"APT ALERT - Potential Lateral Movement"; flags:S,!A; detection_filter:track by_src, count 10, seconds 300; threshold:type threshold, track by_src, count 10, seconds 300; classtype:attempted-recon; sid:3000002; rev:1;)
+
+# Data Staging Detection
+# Identifies large file transfers to temporary locations
+alert tcp $HOME_NET any -> $HOME_NET [21,22,80,443] (msg:"APT ALERT - Data Staging Activity"; flow:to_server; dsize:>10000; http_uri; pcre:"/\/(temp|tmp|staging|backup)/i"; classtype:policy-violation; sid:3000003; rev:1;)
+
+# =============================================================================
+# CATEGORY 4: MALWARE AND EXPLOIT DETECTION
+# =============================================================================
+
+# Known ICS Malware Signatures - Stuxnet-like behavior
+# Detects process manipulation targeting industrial systems  
+alert tcp any any -> $HOME_NET any (msg:"MALWARE ALERT - ICS Malware Process Manipulation"; flow:established; content:"Step7"; nocase; content:"s7otbxdx.dll"; distance:0; nocase; classtype:trojan-activity; sid:4000001; rev:1;)
+
+# HMI Exploitation Attempts
+# Monitors for buffer overflow attempts against HMI software
+alert tcp any any -> $HOME_NET [8080,8443,9600] (msg:"EXPLOIT ALERT - HMI Buffer Overflow Attempt"; flow:to_server; content:"|41 41 41 41|"; depth:1000; pcre:"/A{100,}/"; classtype:attempted-admin; sid:4000002; rev:1;)
+
+# Modbus Exploit Signatures
+# Detects known Modbus-based exploits and attacks
+alert tcp any any -> $HOME_NET 502 (msg:"EXPLOIT ALERT - Modbus Exploit Attempt"; flow:to_server; content:"|FF FF|"; depth:10; byte_test:2,>,1000,2; classtype:attempted-admin; sid:4000003; rev:1;)
+
+# =============================================================================
+# CATEGORY 5: FILE SYSTEM MONITORING AND INTEGRITY
+# =============================================================================
+
+# File Copy Detection - Monitor for file duplication activities
+# Detects when files are being copied, especially critical system files
+alert tcp any any -> $HOME_NET [139,445] (msg:"FILE ALERT - File Copy Operation Detected"; flow:to_server,established; content:"|FF|SMB"; depth:4; content:"|2F 00|"; distance:0; byte_test:1,=,0x2F,9; flowbits:set,file_copy; classtype:policy-violation; sid:5000001; rev:1;)
+
+# File Movement/Rename Detection  
+# Monitors for file move and rename operations via SMB/CIFS
+alert tcp any any -> $HOME_NET [139,445] (msg:"FILE ALERT - File Move/Rename Operation"; flow:to_server,established; content:"|FF|SMB"; depth:4; content:"|07 00|"; distance:0; byte_test:1,=,0x07,9; classtype:policy-violation; sid:5000002; rev:1;)
+
+# File Modification Detection
+# Detects file write operations to critical directories
+alert tcp any any -> $HOME_NET [139,445] (msg:"FILE ALERT - File Modification Detected"; flow:to_server,established; content:"|FF|SMB"; depth:4; content:"|2E 00|"; distance:0; flowbits:set,file_modified; classtype:policy-violation; sid:5000003; rev:1;)
+
+# File Deletion Detection
+# Monitors for file deletion operations
+alert tcp any any -> $HOME_NET [139,445] (msg:"FILE ALERT - File Deletion Detected"; flow:to_server,established; content:"|FF|SMB"; depth:4; content:"|06 00|"; distance:0; byte_test:1,=,0x06,9; classtype:policy-violation; sid:5000004; rev:1;)
+
+# Critical System File Access
+# Monitors access to critical system configuration files
+alert tcp any any -> $HOME_NET [21,22,139,445] (msg:"FILE ALERT - Critical System File Access"; flow:to_server; content:"/etc/passwd"; nocase; classtype:attempted-admin; sid:5000005; rev:1;)
+alert tcp any any -> $HOME_NET [21,22,139,445] (msg:"FILE ALERT - Windows Registry Access"; flow:to_server; content:"\\registry\\"; nocase; classtype:attempted-admin; sid:5000006; rev:1;)
+
+# Unauthorized Configuration File Changes
+# Detects modifications to critical ICS/SCADA configuration files
+alert tcp any any -> $HOME_NET any (msg:"FILE ALERT - ICS Configuration File Modified"; flow:established; http_uri; pcre:"/\.(cfg|conf|ini|xml|json)$/i"; http_method; content:"PUT"; classtype:policy-violation; sid:5000007; rev:1;)
+
+# Log File Tampering Detection
+# Monitors for attempts to modify or delete system logs
+alert tcp any any -> $HOME_NET [514,6514,10514] (msg:"FILE ALERT - Log File Tampering Attempt"; flow:to_server; content:"rm"; distance:0; content:".log"; distance:0; classtype:attempted-admin; sid:5000008; rev:1;)
+
+# =============================================================================
+# CATEGORY 6: ANOMALY AND BEHAVIOR-BASED DETECTION
+# =============================================================================
+
+# Protocol Anomaly Detection
+# Detects malformed or suspicious protocol implementations
+alert tcp any any -> $HOME_NET 502 (msg:"ANOMALY ALERT - Malformed Modbus Packet"; flow:to_server; dsize:<6; classtype:protocol-command-decode; sid:6000001; rev:1;)
+
+# Timing-based Attack Detection
+# Identifies timing attacks against cryptographic implementations
+alert tcp any any -> $HOME_NET [443,8443] (msg:"ANOMALY ALERT - Potential Timing Attack"; flow:to_server,established; detection_filter:track by_src, count 100, seconds 10; threshold:type threshold, track by_src, count 100, seconds 10; classtype:attempted-admin; sid:6000002; rev:1;)
+
+# Abnormal Data Pattern Detection
+# Detects unusual data patterns that might indicate false data injection
+alert tcp any any -> $HOME_NET 502 (msg:"ANOMALY ALERT - Abnormal Sensor Data Pattern"; flow:to_server; content:"|00 01 00 00 00|"; depth:5; byte_test:1,=,0x04,7; byte_test:2,>,65000,8; classtype:policy-violation; sid:6000003; rev:1;)
+
+# =============================================================================
+# CATEGORY 7: NETWORK RECONNAISSANCE DETECTION
+# =============================================================================
+
+# Industrial Network Discovery
+# Detects attempts to discover industrial devices and systems
+alert udp any any -> $HOME_NET [47808,44818,2222] (msg:"RECON ALERT - Industrial Network Discovery"; content:"EtherNet/IP"; nocase; detection_filter:track by_src, count 5, seconds 300; classtype:attempted-recon; sid:7000001; rev:1;)
+
+# SCADA System Enumeration
+# Monitors for systematic enumeration of SCADA systems
+alert tcp any any -> $HOME_NET [102,502,2404,20000] (msg:"RECON ALERT - SCADA System Enumeration"; flags:S,!A; detection_filter:track by_src, count 10, seconds 600; threshold:type threshold, track by_src, count 10, seconds 600; classtype:attempted-recon; sid:7000002; rev:1;)
+
+# =============================================================================
+# SUPPRESSION RULES FOR FALSE POSITIVE REDUCTION
+# =============================================================================
+
+# Suppress legitimate administrative access during maintenance windows
+# suppress gen_id 1, sig_id 2000001, track by_src, ip 192.168.1.100
+# suppress gen_id 1, sig_id 2000004, track by_time, seconds 3600
+
+# =============================================================================
+# ADVANCED DETECTION INTEGRATION EXAMPLES
+# =============================================================================
+
+# Rule for ML-based anomaly detection integration
+# This would work with external ML systems feeding back detection results
+alert tcp any any -> any any (msg:"ML ALERT - Anomaly Detection System Alert"; content:"ML_ANOMALY"; http_header; reference:url,your-ml-system.com; classtype:trojan-activity; sid:8000001; rev:1;)
+
+# Data fusion rule combining multiple detection sources
+# Triggers when multiple suspicious activities are detected from same source
+alert tcp any any -> $HOME_NET any (msg:"FUSION ALERT - Multiple Threat Indicators"; flowbits:isset,encrypted_c2; flowbits:isset,file_copy; flowbits:isset,file_modified; classtype:trojan-activity; sid:8000002; rev:1;)
+
+# =============================================================================
+# END OF RULES
+# =============================================================================
+
+# Configuration Recommendations:
+# 1. Set appropriate HOME_NET and AUTHORIZED_ICS_NET variables
+# 2. Adjust thresholds based on your network baseline
+# 3. Enable file integrity monitoring for critical paths
+# 4. Configure log forwarding to SIEM for correlation
+# 5. Regularly update threat signatures and IOCs
+# 6. Test rules in monitor mode before enabling blocking

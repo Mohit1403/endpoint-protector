@@ -1,0 +1,21 @@
+# Server Dependencies
+node_modules/
+
+# Environment Variables
+.env
+
+# Logs
+logs/
+
+# Reports
+reports/
+
+# OS Files
+Thumbs.db
+.DS_Store
+
+.vercel
+
+node_modules/
+.env
+.DS_Store

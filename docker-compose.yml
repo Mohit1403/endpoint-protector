@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  pentest-tool:
+    build: .
+    container_name: pentest-tool
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-your_jwt_secret_change_this}
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-your_virustotal_api_key}
+      - TZ=${TZ:-UTC}
+    volumes:
+      # Persistent storage for reports and history
+      - ./reports:/usr/src/app/reports
+      - ./history:/usr/src/app/history
+      - ./uploads:/usr/src/app/uploads
+      - ./logs:/usr/src/app/logs
+      - ./temp:/usr/src/app/temp
+    networks:
+      - pentest-network
+    # Add capabilities for networking tools
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    # System limits
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  pentest-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  reports:
+    driver: local
+  history:
+    driver: local
+  uploads:
+    driver: local
+  logs:
+    driver: local
+  temp:
+    driver: local
