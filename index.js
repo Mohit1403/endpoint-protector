@@ -31,6 +31,10 @@ app.use(express.static('public'));
 app.get('/health', (req, res) => {
   res.status(200).json({ ok: true, ts: new Date().toISOString() });
 });
+// Doc file address reference
+app.get('/docs', (req, res) => {
+  res.sendFile(require('path').join(__dirname, 'docs', 'index.html'));
+});
 
 // Configure multer for file uploads
 const upload = multer({
