@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Autopentrix Documentation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      margin: 0;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    header {
+      background: #020617;
+      padding: 20px;
+      border-bottom: 1px solid #1e293b;
+    }
+    h1 { color: #38bdf8; margin: 0; }
+    .container { padding: 30px; max-width: 1000px; margin: auto; }
+    h2 { color: #7dd3fc; border-bottom: 1px solid #1e293b; padding-bottom: 5px; }
+    code {
+      background: #1e293b;
+      padding: 5px 8px;
+      border-radius: 5px;
+    }
+    .card {
+      background: #020617;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      border: 1px solid #1e293b;
+    }
+    ul { line-height: 1.8; }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>Autopentrix Security Platform</h1>
+  <p>Enterprise Penetration Testing & Endpoint Protection Suite</p>
+</header>
+
+<div class="container">
+
+<div class="card">
+<h2>1. Overview</h2>
+<p>
+Autopentrix is an integrated cybersecurity platform designed to automate penetration testing,
+threat intelligence, and endpoint monitoring. It enables security teams to conduct assessments,
+analyze risks, and manage endpoints through a centralized interface.
+</p>
+</div>
+
+<div class="card">
+<h2>2. Architecture</h2>
+<ul>
+<li>Frontend Dashboard (Web UI)</li>
+<li>Backend Server (Node.js + Express + Socket.IO)</li>
+<li>Endpoint Agents (Python-based telemetry collectors)</li>
+</ul>
+<p>
+Communication is handled through REST APIs and WebSockets for real-time updates.
+</p>
+</div>
+
+<div class="card">
+<h2>3. Core Capabilities</h2>
+<ul>
+<li>Automated network scanning using Nmap</li>
+<li>VirusTotal integration for threat intelligence</li>
+<li>Real-time endpoint telemetry monitoring</li>
+<li>Remote command execution on endpoints</li>
+<li>Cryptographic utilities (AES, DES, 3DES)</li>
+<li>Automated report generation</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>4. API Endpoints</h2>
+<ul>
+<li><code>POST /api/virustotal/file</code></li>
+<li><code>POST /api/virustotal/url</code></li>
+<li><code>POST /api/virustotal/hash</code></li>
+<li><code>GET /api/endpoint-protector/agents</code></li>
+<li><code>POST /api/endpoint-protector/agents/:id/command</code></li>
+</ul>
+</div>
+
+<div class="card">
+<h2>5. Deployment</h2>
+<ul>
+<li>Hosted on Render as a Web Service</li>
+<li>Persistent storage enabled for reports and logs</li>
+<li>Environment variables configured securely</li>
+</ul>
+<p>Health Check: <code>/health</code></p>
+</div>
+
+<div class="card">
+<h2>6. Endpoint Agent</h2>
+<p>
+The endpoint agent collects telemetry and executes commands such as:
+</p>
+<ul>
+<li>Process monitoring</li>
+<li>USB control</li>
+<li>Network interface control</li>
+<li>User management</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>7. Security Notice</h2>
+<p>
+This platform is intended strictly for authorized security testing and controlled environments.
+Unauthorized use is prohibited.
+</p>
+</div>
+
+<div class="card">
+<h2>8. Future Roadmap</h2>
+<ul>
+<li>AI-based vulnerability detection</li>
+<li>Advanced analytics dashboard</li>
+<li>Cloud asset scanning</li>
+<li>Role-based access control</li>
+</ul>
+</div>
+
+</div>
+</body>
+</html>
