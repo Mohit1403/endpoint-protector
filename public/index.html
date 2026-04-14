@@ -73,22 +73,18 @@
                         <div class="card-body">
                             <form id="scan-form">
                                 <div class="mb-3">
-                                    <label for="pentester-name" class="form-label">Penetration Tester</label>
-                                    <input type="text" class="form-control" id="pentester-name" 
-                                           placeholder="Enter your name" value="Security Analyst">
-                                    <div class="form-text">Your name will appear in the generated report</div>
-                                </div>
-                                
-                                <div class="mb-3">
                                     <label for="target-input" class="form-label">Target(s)</label>
-                                    <input type="text" class="form-control" id="target-input" 
+                                    <input type="text" class="form-control" id="target-input" name="target-input"
                                            placeholder="IP, domain, or URL" required>
+                                    <div id="target-validation-feedback" class="invalid-feedback"></div>
+                                    <div id="target-validation-suggestion" class="form-text text-warning d-none"></div>
+                                    <div class="valid-feedback"></div>
                                     <div class="form-text">Enter IP address, domain, or URL to scan</div>
                                 </div>
                                 
                                 <div class="mb-3">
                                     <label for="scan-type" class="form-label">Scan Type</label>
-                                    <select class="form-select" id="scan-type">
+                                    <select class="form-select" id="scan-type" name="scan-type">
                                         <option value="-sT -T4">Quick TCP Connect Scan</option>
                                         <option value="-sV -sC -T4">Standard Service Detection</option>
                                         <option value="-sT -sV -sC -A -T4">Comprehensive Scan</option>
@@ -103,13 +99,13 @@
 
                                 <div class="mb-3" id="custom-command-div" style="display: none;">
                                     <label for="custom-command" class="form-label">Custom Nmap Command</label>
-                                    <input type="text" class="form-control" id="custom-command" 
+                                    <input type="text" class="form-control" id="custom-command" name="custom-command"
                                            placeholder="Enter custom nmap flags">
                                 </div>
 
                                 <div class="mb-3">
                                     <label for="nse-scripts" class="form-label">NSE Scripts</label>
-                                    <select class="form-select" id="nse-scripts">
+                                    <select class="form-select" id="nse-scripts" name="nse-scripts">
                                         <option value="">Default Scripts</option>
                                         <option value="--script vuln">Vulnerability Scripts</option>
                                         <option value="--script auth">Authentication Scripts</option>
@@ -118,22 +114,44 @@
                                         <option value="--script intrusive">Intrusive Scripts</option>
                                     </select>
                                 </div>
+                                
+                                <div class="mb-3">
+                                    <label for="pentester-name" class="form-label">Penetration Tester</label>
+                                    <input type="text" class="form-control" id="pentester-name" name="pentester-name"
+                                           placeholder="Enter your name" value="Security Analyst">
+                                    <div class="form-text">Your name will appear in the generated report</div>
+                                </div>
 
-                                <button type="submit" class="btn btn-primary w-100">
-                                    <i class="fas fa-play"></i> Start Scan
-                                </button>
+                                <div class="d-grid gap-2 mt-4">
+                                    <button id="start-scan-btn" type="submit" class="btn btn-primary">
+                                        <i class="fas fa-play me-2"></i>Start Scan
+                                    </button>
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <button id="stop-scan-btn" type="button" class="btn btn-danger w-100" disabled>
+                                                <i class="fas fa-stop me-1"></i>Stop
+                                            </button>
+                                        </div>
+                                        <div class="col-6">
+                                            <button id="reset-scan-btn" type="button" class="btn btn-outline-secondary w-100">
+                                                <i class="fas fa-rotate-left me-1"></i>Reset
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </form>
                         </div>
                     </div>
 
-                    <div class="card mt-3">
-                        <div class="card-header">
-                            <h6><i class="fas fa-info-circle"></i> Scan Status</h6>
+                    <div class="card mt-3 shadow-sm border-primary">
+                        <div class="card-header bg-dark text-primary py-2">
+                            <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Scan Progress</h6>
                         </div>
-                        <div class="card-body">
-                            <div id="scan-status" class="text-muted">Ready to scan</div>
-                            <div class="progress mt-2" style="height: 10px;">
-                                <div id="scan-progress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        <div class="card-body py-3">
+                            <div id="scan-status" class="text-info small mb-2 fw-bold">Ready to start scan</div>
+                            <div class="progress" style="height: 15px; background-color: rgba(255,255,255,0.1);">
+                                <div id="scan-progress" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                                     role="progressbar" style="width: 0%; font-size: 10px; font-weight: bold;">0%</div>
                             </div>
                         </div>
                     </div>
@@ -155,6 +173,115 @@
                         <div class="card-body">
                             <div id="output-container" class="output-container">
                                 <div class="text-muted">Scan output will appear here...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="scan-dashboard" class="mt-4" style="display: none;">
+                <div class="col-12 mb-3">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h4 class="mb-0"><i class="fas fa-chart-dashboard me-2"></i>Scan Results Dashboard</h4>
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="text-muted small fw-bold">Select Past Scan:</label>
+                            <select id="past-scan-selector" class="form-select form-select-sm" style="width: auto; min-width: 200px;">
+                                <option value="">-- Current Scan Results --</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="load-scan-btn">
+                                <i class="fas fa-search me-1"></i>Load
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="show-current-btn">
+                                <i class="fas fa-sync me-1"></i>Show Current
+                            </button>
+                        </div>
+                    </div>
+                    <div id="current-scan-info" class="mt-2 text-muted small"></div>
+                </div>
+
+                <!-- Horizontal Tiles Row - 4 columns -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card scan-dashboard-card text-center border-primary h-100">
+                            <div class="card-body py-3">
+                                <i class="fas fa-server fa-2x text-primary mb-2"></i>
+                                <div class="display-6 text-primary fw-bold" id="dash-hosts-count">0</div>
+                                <div class="text-muted small">Active Hosts</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card scan-dashboard-card text-center border-success h-100">
+                            <div class="card-body py-3">
+                                <i class="fas fa-door-open fa-2x text-success mb-2"></i>
+                                <div class="display-6 text-success fw-bold" id="dash-ports-count">0</div>
+                                <div class="text-muted small">Open Ports</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card scan-dashboard-card text-center border-info h-100">
+                            <div class="card-body py-3">
+                                <i class="fas fa-cogs fa-2x text-info mb-2"></i>
+                                <div class="display-6 text-info fw-bold" id="dash-services-count">0</div>
+                                <div class="text-muted small">Services Detected</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card scan-dashboard-card text-center border-warning h-100">
+                            <div class="card-body py-3">
+                                <i class="fas fa-exclamation-triangle fa-2x text-warning mb-2"></i>
+                                <div class="display-6 text-warning fw-bold" id="dash-vulns-count">0</div>
+                                <div class="text-muted small">Security Notes</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="row g-3 mb-4">
+                    <div class="col-lg-6">
+                        <div class="card scan-dashboard-card h-100">
+                            <div class="card-header py-2">
+                                <h6 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Port Distribution</h6>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="portDistributionChart" style="max-height: 200px;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card scan-dashboard-card h-100">
+                            <div class="card-header py-2">
+                                <h6 class="mb-0"><i class="fas fa-network-wired me-2"></i>Services Overview</h6>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="servicesOverviewChart" style="max-height: 200px;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Details Sections - Full Width Cards -->
+                <div class="row g-3">
+                    <div class="col-12">
+                        <div class="card scan-dashboard-card mb-3">
+                            <div class="card-header py-2">
+                                <h6 class="mb-0"><i class="fas fa-list me-2"></i>Discovered Services Details</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="services-details" class="row g-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="card scan-dashboard-card border-warning">
+                            <div class="card-header py-2 bg-warning text-dark">
+                                <h6 class="mb-0 fw-bold"><i class="fas fa-shield-alt me-2"></i>Security Considerations & Recommendations</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="vulnerability-details" class="row g-3"></div>
                             </div>
                         </div>
                     </div>
@@ -678,6 +805,53 @@
                     <h5><i class="fas fa-file-pdf"></i> Generated Reports</h5>
                 </div>
                 <div class="card-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-1">Pentester</label>
+                            <select id="report-filter-pentester" class="form-select form-select-sm">
+                                <option value="">All pentesters</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-1">Scan Type</label>
+                            <select id="report-filter-scan-type" class="form-select form-select-sm">
+                                <option value="">All scan types</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-1">Date</label>
+                            <input id="report-filter-date" type="date" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-1">Month</label>
+                            <select id="report-filter-month" class="form-select form-select-sm">
+                                <option value="">All months</option>
+                                <option value="1">January</option>
+                                <option value="2">February</option>
+                                <option value="3">March</option>
+                                <option value="4">April</option>
+                                <option value="5">May</option>
+                                <option value="6">June</option>
+                                <option value="7">July</option>
+                                <option value="8">August</option>
+                                <option value="9">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end gap-2">
+                            <button id="report-filter-reset-btn" class="btn btn-sm btn-outline-light w-100" type="button">
+                                <i class="fas fa-eraser me-1"></i> Reset
+                            </button>
+                            <button id="report-download-filtered-btn" class="btn btn-sm btn-primary w-100" type="button">
+                                <i class="fas fa-download me-1"></i> Download
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-2 text-muted small">
+                        <span id="reports-filtered-count">0 shown</span>
+                    </div>
                     <div id="reports-list">
                         <div class="text-muted">No reports generated yet.</div>
                     </div>

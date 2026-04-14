@@ -260,6 +260,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return resultDiv;
     }
 
+    function escapeHtml(unsafe) {
+        if (typeof unsafe !== 'string') return unsafe;
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
 
 
     // Endpoint Mission Control filtering
@@ -298,44 +308,861 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let scanStartTime = null;
     let progressInterval = null;
+    let currentScanProcess = null;
+    let portDistributionChart = null;
+    let servicesOverviewChart = null;
+    let currentScanAnalysis = null;
+    let currentScanInfo = null;
+    let pastScans = [];
+
+    const vulnerabilityDatabase = {
+        'ssh': {
+            name: 'SSH (Secure Shell)',
+            port: '22',
+            risk: 'MEDIUM',
+            description: 'SSH service is running on this port, allowing secure remote access.',
+            damages: [
+                'Potential brute-force attacks if weak credentials are used',
+                'If not properly configured, could allow unauthorized access',
+                'Key exchange vulnerabilities could be exploited'
+            ],
+            recommendations: [
+                'Use strong, complex passwords or key-based authentication',
+                'Disable root login via SSH',
+                'Use SSH key pairs instead of passwords',
+                'Implement fail2ban to block brute-force attempts',
+                'Keep SSH software updated'
+            ]
+        },
+        'http': {
+            name: 'HTTP (Hypertext Transfer Protocol)',
+            port: '80',
+            risk: 'HIGH',
+            description: 'Unencrypted web traffic is running on this port.',
+            damages: [
+                'Data transmitted can be intercepted (man-in-the-middle)',
+                'Session hijacking possible',
+                'Credential theft via packet capture'
+            ],
+            recommendations: [
+                'Redirect all HTTP to HTTPS',
+                'Implement HSTS (HTTP Strict Transport Security)',
+                'Use TLS 1.2 or higher',
+                'Obtain and install SSL/TLS certificates'
+            ]
+        },
+        'https': {
+            name: 'HTTPS (HTTP Secure)',
+            port: '443',
+            risk: 'LOW',
+            description: 'Encrypted web traffic is running on this port.',
+            damages: [
+                'SSL/TLS vulnerabilities could be exploited if outdated',
+                'Certificate issues could affect security'
+            ],
+            recommendations: [
+                'Use TLS 1.3 if possible',
+                'Disable older SSL/TLS versions',
+                'Regular certificate renewal',
+                'Implement certificate pinning'
+            ]
+        },
+        'ftp': {
+            name: 'FTP (File Transfer Protocol)',
+            port: '21',
+            risk: 'HIGH',
+            description: 'FTP service is running, which transmits data in clear text.',
+            damages: [
+                'All credentials and files can be intercepted',
+                'Anonymous access may be enabled',
+                'Bounce attacks possible'
+            ],
+            recommendations: [
+                'Disable FTP and use SFTP or SCP instead',
+                'If FTP required, implement TLS encryption',
+                'Disable anonymous access',
+                'Use strong authentication'
+            ]
+        },
+        'telnet': {
+            name: 'Telnet',
+            port: '23',
+            risk: 'CRITICAL',
+            description: 'Telnet transmits everything in clear text including passwords.',
+            damages: [
+                'Complete credential compromise',
+                'Session hijacking',
+                'All data including sensitive info visible to attackers'
+            ],
+            recommendations: [
+                'Disable Telnet immediately',
+                'Replace with SSH for remote access',
+                'If legacy systems require Telnet, isolate on separate network'
+            ]
+        },
+        'smtp': {
+            name: 'SMTP (Simple Mail Transfer Protocol)',
+            port: '25',
+            risk: 'MEDIUM',
+            description: 'Mail server is running, often used for spam or reconnaissance.',
+            damages: [
+                'Open relay can be exploited for spam',
+                'User enumeration possible',
+                'Email spoofing potential'
+            ],
+            recommendations: [
+                'Restrict relay access',
+                'Implement SPF, DKIM, and DMARC',
+                'Use SMTP authentication',
+                'Configure proper firewall rules'
+            ]
+        },
+        'dns': {
+            name: 'DNS (Domain Name System)',
+            port: '53',
+            risk: 'MEDIUM',
+            description: 'DNS service is running, critical for network navigation.',
+            damages: [
+                'DNS poisoning/cache snooping',
+                'Amplification attacks possible',
+                'Zone transfers may leak network information'
+            ],
+            recommendations: [
+                'Disable zone transfers',
+                'Implement DNSSEC',
+                'Restrict queries to authorized IPs',
+                'Monitor for unusual DNS traffic'
+            ]
+        },
+        'msrpc': {
+            name: 'Microsoft RPC',
+            port: '135',
+            risk: 'HIGH',
+            description: 'Windows RPC endpoint mapper is accessible.',
+            damages: [
+                'Information disclosure',
+                'Remote code execution vulnerabilities',
+                'Lateral movement potential'
+            ],
+            recommendations: [
+                'Block port 135 at firewall',
+                'Enable Windows Firewall',
+                'Apply latest Microsoft patches',
+                'Disable RPC services if not needed'
+            ]
+        },
+        'netbios': {
+            name: 'NetBIOS',
+            port: '139',
+            risk: 'HIGH',
+            description: 'NetBIOS name service is running, legacy Windows networking.',
+            damages: [
+                'Network enumeration and reconnaissance',
+                'SMB relay attacks',
+                'Potential unauthorized file sharing access'
+            ],
+            recommendations: [
+                'Disable NetBIOS over TCP/IP',
+                'Block ports 137-139 at firewall',
+                'Disable file sharing if not needed'
+            ]
+        },
+        'smb': {
+            name: 'SMB (Server Message Block)',
+            port: '445',
+            risk: 'CRITICAL',
+            description: 'SMB file sharing protocol is exposed to the network.',
+            damages: [
+                'EternalBlue and similar exploits possible',
+                'Ransomware delivery vector',
+                'Lateral movement through file shares',
+                'Credential theft via SMB relay'
+            ],
+            recommendations: [
+                'Block port 445 at external firewall',
+                'Apply MS17-010 and subsequent patches',
+                'Disable SMBv1',
+                'Enable SMB signing',
+                'Use network segmentation'
+            ]
+        },
+        'rdp': {
+            name: 'RDP (Remote Desktop Protocol)',
+            port: '3389',
+            risk: 'CRITICAL',
+            description: 'Remote Desktop is accessible, common attack vector.',
+            damages: [
+                'BlueKeep vulnerabilities',
+                'Brute-force attacks',
+                'Ransomware delivery via RDP',
+                'Lateral movement capability'
+            ],
+            recommendations: [
+                'Enable Network Level Authentication (NLA)',
+                'Use strong passwords',
+                'Implement account lockout policies',
+                'Restrict RDP access via firewall',
+                'Use VPN for remote access instead of direct RDP exposure'
+            ]
+        },
+        'mysql': {
+            name: 'MySQL Database',
+            port: '3306',
+            risk: 'HIGH',
+            description: 'MySQL database server is accessible.',
+            damages: [
+                'SQL injection if web app vulnerable',
+                'Data breach potential',
+                'Unauthorized database access'
+            ],
+            recommendations: [
+                'Bind MySQL to localhost only',
+                'Use strong root password',
+                'Implement proper firewall rules',
+                'Enable SSL/TLS for MySQL connections',
+                'Regular security audits'
+            ]
+        },
+        'postgresql': {
+            name: 'PostgreSQL Database',
+            port: '5432',
+            risk: 'HIGH',
+            description: 'PostgreSQL database server is accessible.',
+            damages: [
+                'Data breach potential',
+                'SQL injection attacks',
+                'Unauthorized database access'
+            ],
+            recommendations: [
+                'Configure pg_hba.conf for limited access',
+                'Use SSL connections',
+                'Implement row-level security',
+                'Regular security updates'
+            ]
+        },
+        'mongodb': {
+            name: 'MongoDB',
+            port: '27017',
+            risk: 'HIGH',
+            description: 'MongoDB NoSQL database is accessible.',
+            damages: [
+                'Data exfiltration if no authentication',
+                'NoSQL injection attacks',
+                'Unauthorized access to collections'
+            ],
+            recommendations: [
+                'Enable authentication',
+                'Use TLS/SSL encryption',
+                'Restrict network access',
+                'Disable HTTP interface in production'
+            ]
+        },
+        'redis': {
+            name: 'Redis',
+            port: '6379',
+            risk: 'CRITICAL',
+            description: 'Redis server is accessible without authentication.',
+            damages: [
+                'Complete data exposure',
+                'Server takeover possible',
+                'Data deletion/modification risk'
+            ],
+            recommendations: [
+                'Enable Redis authentication',
+                'Bind to localhost only',
+                'Use TLS encryption',
+                'Disable危险 commands in production'
+            ]
+        },
+        'vnc': {
+            name: 'VNC (Virtual Network Computing)',
+            port: '5900',
+            risk: 'HIGH',
+            description: 'VNC remote desktop service is accessible.',
+            damages: [
+                'Remote code execution',
+                'Screen capture/keystroke logging',
+                'Lateral movement capability'
+            ],
+            recommendations: [
+                'Disable VNC if not needed',
+                'Use strong password',
+                'Implement VPN access',
+                'Keep VNC software updated'
+            ]
+        }
+    };
+
+    function validateTargetInput(target) {
+        const feedback = document.getElementById('target-validation-feedback');
+        const suggestion = document.getElementById('target-validation-suggestion');
+        const input = document.getElementById('target-input');
+
+        if (!target || target.trim() === '') {
+            input.classList.remove('is-valid');
+            input.classList.add('is-invalid');
+            feedback.textContent = 'Target cannot be empty. Please enter an IP address, domain, or URL.';
+            suggestion.classList.add('d-none');
+            return false;
+        }
+
+        const trimmedTarget = target.trim();
+
+        const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        const ipv4Match = trimmedTarget.match(ipv4Regex);
+
+        if (ipv4Match) {
+            const parts = trimmedTarget.split('.').map(Number);
+            if (parts[0] === 0 || parts[0] === 127 || parts[3] === 0 || parts[3] === 255) {
+                input.classList.remove('is-valid');
+                input.classList.add('is-invalid');
+                feedback.textContent = 'Invalid IP address range.';
+                suggestion.innerHTML = 'Suggestions: Use a valid host IP (e.g., 192.168.1.1). Avoid loopback (127.x.x.x), broadcast (255.255.255.255), and network addresses.';
+                suggestion.classList.remove('d-none');
+                return false;
+            }
+            input.classList.remove('is-invalid');
+            input.classList.add('is-valid');
+            feedback.textContent = '';
+            suggestion.classList.add('d-none');
+            return true;
+        }
+
+        const ipv6Regex = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$/;
+        if (ipv6Regex.test(trimmedTarget)) {
+            input.classList.remove('is-invalid');
+            input.classList.add('is-valid');
+            feedback.textContent = '';
+            suggestion.classList.add('d-none');
+            return true;
+        }
+
+        const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+        const urlRegex = /^https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)$/;
+
+        if (domainRegex.test(trimmedTarget)) {
+            input.classList.remove('is-invalid');
+            input.classList.add('is-valid');
+            feedback.textContent = '';
+            suggestion.classList.add('d-none');
+            return true;
+        }
+
+        if (urlRegex.test(trimmedTarget)) {
+            input.classList.remove('is-invalid');
+            input.classList.add('is-valid');
+            feedback.textContent = '';
+            suggestion.classList.add('d-none');
+            return true;
+        }
+
+        input.classList.remove('is-valid');
+        input.classList.add('is-invalid');
+
+        let errorMsg = 'Invalid format. Please enter a valid:';
+        let suggestions = [];
+
+        if (/\d+\.\d+\.\d+\.\d+/.test(trimmedTarget)) {
+            errorMsg = 'IP address format is incorrect.';
+            suggestions.push('Example valid IP: 192.168.1.1');
+        } else if (/[a-zA-Z]/.test(trimmedTarget) && !trimmedTarget.includes('.')) {
+            errorMsg = 'Domain name appears incomplete.';
+            suggestions.push('Example valid domain: example.com');
+        } else if (trimmedTarget.includes('://')) {
+            errorMsg = 'URL format is incorrect.';
+            suggestions.push('Example valid URL: https://example.com');
+        } else {
+            suggestions.push('Valid IP: 192.168.1.1');
+            suggestions.push('Valid domain: example.com');
+            suggestions.push('Valid URL: https://example.com');
+        }
+
+        feedback.textContent = errorMsg;
+        suggestion.innerHTML = 'Suggestions:<br>' + suggestions.map(s => '• ' + s).join('<br>');
+        suggestion.classList.remove('d-none');
+
+        return false;
+    }
+
+    function showScanDashboard(analysis) {
+        const dashboard = document.getElementById('scan-dashboard');
+        if (!dashboard) return;
+
+        dashboard.style.display = 'block';
+
+        const hostsFound = analysis.hostsFound || (analysis.summary ? (analysis.summary.match(/\d+ host/i) ? parseInt(analysis.summary.match(/\d+ host/i)[0]) : 0) : 0);
+        const portsOpen = analysis.portsOpen || (analysis.services ? analysis.services.length : 0);
+        const servicesCount = analysis.services ? analysis.services.length : 0;
+        const vulnerabilitiesList = analysis.vulnerabilities || [];
+
+        document.getElementById('dash-hosts-count').textContent = hostsFound;
+        document.getElementById('dash-ports-count').textContent = portsOpen;
+        document.getElementById('dash-services-count').textContent = servicesCount;
+        document.getElementById('dash-vulns-count').textContent = vulnerabilitiesList.length;
+
+        if (analysis.services) {
+            renderPortDistributionChart(analysis.services);
+            renderServicesOverviewChart(analysis.services);
+        }
+        renderServicesDetails(analysis.services || []);
+        renderVulnerabilityDetails(vulnerabilitiesList);
+    }
+
+    function renderServicesDetails(services) {
+        const container = document.getElementById('services-details');
+        if (!container) return;
+
+        if (!services || services.length === 0) {
+            container.innerHTML = '<div class="col-12 text-center text-muted">No services detected.</div>';
+            return;
+        }
+
+        container.innerHTML = services.slice(0, 12).map(svc => {
+            const vulnKey = Object.keys(vulnerabilityDatabase).find(key =>
+                svc.service.toLowerCase().includes(key)
+            );
+            const vulnInfo = vulnKey ? vulnerabilityDatabase[vulnKey] : null;
+            const riskColor = vulnInfo ? (vulnInfo.risk === 'CRITICAL' ? 'danger' : vulnInfo.risk === 'HIGH' ? 'warning' : 'info') : 'secondary';
+            const riskBadge = vulnInfo ? `<span class="badge bg-${riskColor} ms-2">${vulnInfo.risk}</span>` : '';
+
+            return `
+                <div class="col-md-4 mb-2">
+                    <div class="card h-100 border-${riskColor}" style="border-width: 2px;">
+                        <div class="card-body py-2 px-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="badge bg-primary me-2">${svc.port}/${svc.protocol}</span>
+                                    <strong class="text-white">${svc.service}</strong>
+                                    ${riskBadge}
+                                </div>
+                            </div>
+                            <small class="text-muted">${svc.version || 'Service info unavailable'}</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        if (services.length > 12) {
+            container.innerHTML += `<div class="col-12 text-center text-muted mt-2">... and ${services.length - 12} more services</div>`;
+        }
+    }
+
+    function renderPortDistributionChart(services) {
+        const ctx = document.getElementById('portDistributionChart');
+        if (!ctx) return;
+
+        if (portDistributionChart) {
+            portDistributionChart.destroy();
+        }
+
+        const portCounts = {};
+        services.forEach(svc => {
+            const port = svc.port.split('/')[0];
+            const serviceName = svc.service.toLowerCase();
+            if (portCounts[serviceName]) {
+                portCounts[serviceName]++;
+            } else {
+                portCounts[serviceName] = 1;
+            }
+        });
+
+        const labels = Object.keys(portCounts);
+        const data = Object.values(portCounts);
+
+        const colors = [
+            '#00ff41', '#00d4ff', '#ff6b35', '#9d00ff', '#ffd23f',
+            '#ff3366', '#00cc99', '#3366ff', '#ff9900', '#66ff00'
+        ];
+
+        portDistributionChart = new Chart(ctx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderColor: '#1a1f3a',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: '#b8c5d6',
+                            font: { size: 11 }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderServicesOverviewChart(services) {
+        const ctx = document.getElementById('servicesOverviewChart');
+        if (!ctx) return;
+
+        if (servicesOverviewChart) {
+            servicesOverviewChart.destroy();
+        }
+
+        const portRanges = {
+            'Well-Known (0-1023)': 0,
+            'Registered (1024-49151)': 0,
+            'Dynamic (49152+)': 0
+        };
+
+        services.forEach(svc => {
+            const port = parseInt(svc.port.split('/')[0]);
+            if (port <= 1023) {
+                portRanges['Well-Known (0-1023)']++;
+            } else if (port <= 49151) {
+                portRanges['Registered (1024-49151)']++;
+            } else {
+                portRanges['Dynamic (49152+)']++;
+            }
+        });
+
+        servicesOverviewChart = new Chart(ctx.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: Object.keys(portRanges),
+                datasets: [{
+                    label: 'Services',
+                    data: Object.values(portRanges),
+                    backgroundColor: ['#00ff41', '#00d4ff', '#ff6b35'],
+                    borderColor: ['#00ff41', '#00d4ff', '#ff6b35'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#b8c5d6' },
+                        grid: { color: 'rgba(0, 255, 65, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#b8c5d6' },
+                        grid: { color: 'rgba(0, 255, 65, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
+
+    function renderVulnerabilityDetails(vulnerabilities) {
+        const container = document.getElementById('vulnerability-details');
+        if (!container) return;
+
+        if (!vulnerabilities || vulnerabilities.length === 0) {
+            container.innerHTML = '<div class="col-12 text-center text-muted py-3"><i class="fas fa-check-circle fa-2x mb-2 text-success"></i><p>No significant security considerations identified.</p></div>';
+            return;
+        }
+
+        container.innerHTML = vulnerabilities.map((vuln, index) => {
+            const vulnKey = Object.keys(vulnerabilityDatabase).find(key =>
+                vuln.toLowerCase().includes(key)
+            );
+            const vulnInfo = vulnKey ? vulnerabilityDatabase[vulnKey] : null;
+
+            if (!vulnInfo) {
+                return `
+                    <div class="col-md-6 mb-2">
+                        <div class="card border-warning h-100 bg-dark shadow-sm">
+                            <div class="card-header bg-warning text-dark py-1">
+                                <h6 class="mb-0 small fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>Note #${index + 1}</h6>
+                            </div>
+                            <div class="card-body py-2">
+                                <p class="card-text small mb-0">${vuln}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const riskClass = vulnInfo.risk === 'CRITICAL' ? 'danger' : vulnInfo.risk === 'HIGH' ? 'warning' : 'info';
+            const riskIcon = vulnInfo.risk === 'CRITICAL' ? 'fa-skull-crossbones' : vulnInfo.risk === 'HIGH' ? 'fa-exclamation-circle' : 'fa-info-circle';
+
+            return `
+                <div class="col-lg-6 mb-3">
+                    <div class="card border-${riskClass} h-100 bg-dark shadow-sm">
+                        <div class="card-header bg-${riskClass} ${riskClass === 'warning' ? 'text-dark' : 'text-white'} py-1">
+                            <h6 class="mb-0 small fw-bold">
+                                <i class="fas ${riskIcon} me-2"></i>
+                                ${vulnInfo.name}
+                                <span class="badge bg-dark ms-2 text-white">${vulnInfo.risk} RISK</span>
+                            </h6>
+                        </div>
+                        <div class="card-body py-2 px-3">
+                            <p class="card-text small mb-2 text-info"><strong>Description:</strong> ${vulnInfo.description}</p>
+
+                            <div class="mb-2">
+                                <strong class="small text-danger d-block mb-1">Potential Damages:</strong>
+                                <ul class="ps-3 mb-0">
+                                    ${vulnInfo.damages.map(d => `<li class="x-small text-light">${d}</li>`).join('')}
+                                </ul>
+                            </div>
+
+                            <div>
+                                <strong class="small text-success d-block mb-1">Recommendations:</strong>
+                                <ul class="ps-3 mb-0">
+                                    ${vulnInfo.recommendations.map(r => `<li class="x-small text-light">${r}</li>`).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function resetScanForm() {
+        const form = document.getElementById('scan-form');
+        if (form) form.reset();
+
+        const targetInput = document.getElementById('target-input');
+        if (targetInput) {
+            targetInput.classList.remove('is-valid', 'is-invalid');
+        }
+
+        const feedback = document.getElementById('target-validation-feedback');
+        const suggestion = document.getElementById('target-validation-suggestion');
+        if (feedback) feedback.textContent = '';
+        if (suggestion) suggestion.classList.add('d-none');
+
+        clearOutput();
+
+        const scanStatus = document.getElementById('scan-status');
+        if (scanStatus) scanStatus.textContent = 'Ready to scan';
+
+        const scanProgress = document.getElementById('scan-progress');
+        if (scanProgress) {
+            scanProgress.style.width = '0%';
+            scanProgress.textContent = '';
+            scanProgress.classList.remove('bg-success', 'bg-danger');
+        }
+
+        const dashboard = document.getElementById('scan-dashboard');
+        if (dashboard) dashboard.style.display = 'none';
+
+        const stopBtn = document.getElementById('stop-scan-btn');
+        if (stopBtn) stopBtn.disabled = true;
+
+        const startBtn = document.getElementById('start-scan-btn');
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.innerHTML = '<i class="fas fa-play"></i> Start Scan';
+        }
+
+        showNotification('Scan form has been reset', 'info');
+    }
+
+    function populatePastScanSelector() {
+        const selector = document.getElementById('past-scan-selector');
+        if (!selector) return;
+
+        selector.innerHTML = '<option value="">-- Current Scan Results --</option>';
+
+        pastScans.forEach((scan, index) => {
+            const date = new Date(scan.timestamp).toLocaleString();
+            const label = `${scan.target} (${date})`;
+            selector.innerHTML += `<option value="${index}">${label}</option>`;
+        });
+    }
+
+    function updateScanInfoDisplay() {
+        const infoDiv = document.getElementById('current-scan-info');
+        if (!infoDiv || !currentScanInfo) return;
+
+        const date = new Date(currentScanInfo.timestamp).toLocaleString();
+        let html = `<strong>Current:</strong> ${currentScanInfo.target} | ${date}`;
+        if (currentScanInfo.reportGenerated && currentScanInfo.reportFilename) {
+            html += ` | <span class="text-success"><i class="fas fa-file-pdf me-1"></i>${currentScanInfo.reportFilename}</span>`;
+        }
+        infoDiv.innerHTML = html;
+    }
+
+    function loadSelectedScan() {
+        const selector = document.getElementById('past-scan-selector');
+        if (!selector || !selector.value) {
+            showNotification('Please select a scan to load', 'warning');
+            return;
+        }
+
+        const index = parseInt(selector.value);
+        if (isNaN(index) || index < 0 || index >= pastScans.length) {
+            showNotification('Invalid scan selection', 'error');
+            return;
+        }
+
+        const selectedScan = pastScans[index];
+        if (selectedScan && selectedScan.analysis) {
+            currentScanAnalysis = selectedScan.analysis;
+            currentScanInfo = {
+                id: selectedScan.id,
+                target: selectedScan.target,
+                timestamp: selectedScan.timestamp,
+                reportGenerated: selectedScan.reportGenerated,
+                reportFilename: selectedScan.reportFilename
+            };
+
+            showScanDashboard(selectedScan.analysis);
+            updateScanInfoDisplay();
+            showNotification(`Loaded scan results for: ${selectedScan.target}`, 'success');
+        }
+    }
+
+    function showCurrentScan() {
+        if (currentScanAnalysis) {
+            showScanDashboard(currentScanAnalysis);
+            updateScanInfoDisplay();
+            showNotification('Showing current scan results', 'info');
+        } else {
+            showNotification('No current scan results available', 'warning');
+        }
+    }
+
+    async function loadPastScansFromServer() {
+        try {
+            const response = await fetch('/api/history/scans');
+            if (response.ok) {
+                const scans = await response.json();
+                scans.forEach(scan => {
+                    if (scan.analysis && !pastScans.find(p => p.id === scan.id)) {
+                        pastScans.push({
+                            id: scan.id,
+                            target: scan.target,
+                            timestamp: scan.startTime,
+                            analysis: scan.analysis,
+                            reportGenerated: scan.reportGenerated,
+                            reportFilename: scan.reportId ? `scan-report-${scan.id}.pdf` : null
+                        });
+                    }
+                });
+                if (pastScans.length > 0) {
+                    populatePastScanSelector();
+                }
+            }
+        } catch (error) {
+            console.error('Error loading past scans:', error);
+        }
+    }
+
+    function stopScan() {
+        if (socket) {
+            socket.emit('stop-scan');
+            
+            stopProgressAnimation();
+
+            const scanStatus = document.getElementById('scan-status');
+            if (scanStatus) scanStatus.textContent = 'Scan stopped by user';
+
+            const stopBtn = document.getElementById('stop-scan-btn');
+            if (stopBtn) stopBtn.disabled = true;
+
+            const startBtn = document.getElementById('start-scan-btn');
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<i class="fas fa-play"></i> Start Scan';
+            }
+
+            appendOutput('Scan stopped by user.', 'warning');
+            showNotification('Scan has been stopped', 'warning');
+        }
+    }
     
     socket.on('scan-progress', data => {
+        console.log('[Frontend] Received scan-progress:', data);
+        
         // Update scan status with timestamp
-        if (data.status) {
-            const timestamp = new Date().toLocaleString();
-            scanStatus.innerHTML = `${data.status} <small class="text-muted">(${timestamp})</small>`;
+        if (data.status && scanStatus) {
+            const timestamp = new Date().toLocaleTimeString();
+            scanStatus.innerHTML = `<span class="text-primary fw-bold">${data.status}</span> <small class="text-muted ms-2">${timestamp}</small>`;
             
             // Real-time progress calculation
             if (data.status.includes('Starting')) {
                 scanStartTime = Date.now();
                 startProgressAnimation();
-                updateProgress(5); // Initial progress
+                updateProgress(5, 'Initializing...');
             } else if (data.status.includes('Scanning') || data.status.includes('Running')) {
                 // Update progress based on time elapsed and scan activity
                 updateProgressBasedOnActivity(data);
             } else if (data.status === 'Completed') {
                 stopProgressAnimation();
-                updateProgress(100);
-                scanProgress.classList.add('bg-success');
-            } else if (data.status === 'Failed') {
+                updateProgress(100, 'Scan Successful');
+                if (scanProgress) {
+                    scanProgress.classList.remove('bg-primary');
+                    scanProgress.classList.add('bg-success');
+                }
+            } else if (data.status === 'Failed' || data.status === 'Stopped') {
                 stopProgressAnimation();
-                updateProgress(0);
-                scanProgress.classList.add('bg-danger');
+                updateProgress(data.status === 'Stopped' ? 50 : 0, data.status);
+                if (scanProgress) {
+                    scanProgress.classList.remove('bg-primary');
+                    scanProgress.classList.add(data.status === 'Stopped' ? 'bg-warning' : 'bg-danger');
+                }
             }
         }
         
-        // Use explicit progress if provided, otherwise calculate
-        if (data.progress !== undefined) {
+        // Use explicit progress if provided
+        if (data.progress !== undefined && scanProgress) {
             updateProgress(data.progress);
         }
         
-        if (data.message) {
-            appendOutput(data.message.text, data.message.type);
+        if (data.message && data.message.text) {
+            appendOutput(data.message.text, data.message.type || 'info');
         }
         
         // Show report generation notification
         if (data.reportGenerated && data.reportFilename) {
             showNotification(`Professional report generated: ${data.reportFilename}`, 'success');
+        }
+
+        if (data.status === 'Completed' && data.analysis) {
+            currentScanAnalysis = data.analysis;
+            currentScanInfo = {
+                id: data.scanId,
+                target: document.getElementById('target-input')?.value || 'Unknown',
+                timestamp: new Date().toISOString(),
+                reportGenerated: data.reportGenerated,
+                reportFilename: data.reportFilename
+            };
+
+            pastScans.unshift({
+                id: data.scanId,
+                target: currentScanInfo.target,
+                timestamp: currentScanInfo.timestamp,
+                analysis: data.analysis,
+                reportGenerated: data.reportGenerated,
+                reportFilename: data.reportFilename
+            });
+
+            if (pastScans.length > 20) {
+                pastScans = pastScans.slice(0, 20);
+            }
+
+            populatePastScanSelector();
+            showScanDashboard(data.analysis);
+            updateScanInfoDisplay();
+
+            const stopBtn = document.getElementById('stop-scan-btn');
+            if (stopBtn) stopBtn.disabled = true;
+
+            const startBtn = document.getElementById('start-scan-btn');
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<i class="fas fa-play"></i> Start Scan';
+            }
         }
     });
 
@@ -480,10 +1307,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function updateProgress(percentage) {
+    function updateProgress(percentage, statusText) {
+        if (!scanProgress) return;
+        
         percentage = Math.max(0, Math.min(100, percentage));
         scanProgress.style.width = `${percentage}%`;
         scanProgress.textContent = `${Math.round(percentage)}%`;
+        scanProgress.setAttribute('aria-valuenow', Math.round(percentage));
+        
+        // Update status text if provided
+        if (statusText && scanStatus) {
+            const timestamp = new Date().toLocaleTimeString();
+            scanStatus.innerHTML = `<span class="text-primary fw-bold">${statusText}</span> <small class="text-muted ms-2">${timestamp}</small>`;
+        }
         
         // Add visual feedback
         if (percentage > 0 && percentage < 100) {
@@ -913,37 +1749,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Professional formatting for rich alert types - limit to 50 most recent
         endpointAlertsTimeline.innerHTML = realAlerts.slice(0, 50).map(alert => {
-            let icon = 'fa-info-circle', color = 'info', message = alert.message || '';
+            let icon = 'fa-info-circle', color = 'info', message = escapeHtml(alert.message || '');
             let contextInfo = '';
             const alertType = (alert.alertType || alert.type || '').toUpperCase();
             
             switch (alertType) {
                 case 'FILE_MODIFIED':
                     icon = 'fa-file-pen'; color = 'primary';
-                    const filePath = alert.file || (alert.details && alert.details.file) || 'Unknown file';
+                    const filePath = escapeHtml(alert.file || (alert.details && alert.details.file) || 'Unknown file');
                     message = `File modified: <code class="text-primary">${filePath}</code>`;
                     break;
                 case 'FILE_DELETED':
                     icon = 'fa-file-circle-minus'; color = 'danger';
-                    const deletedFile = alert.file || (alert.details && alert.details.file) || 'Unknown file';
+                    const deletedFile = escapeHtml(alert.file || (alert.details && alert.details.file) || 'Unknown file');
                     message = `File deleted: <code class="text-danger">${deletedFile}</code>`;
                     break;
                 case 'USB_CONNECTED':
                     icon = 'fa-usb'; color = 'success';
-                    const vendor = alert.details && alert.details.vendor ? alert.details.vendor : '';
-                    const product = alert.details && alert.details.product ? alert.details.product : '';
+                    const vendor = escapeHtml(alert.details && alert.details.vendor ? alert.details.vendor : '');
+                    const product = escapeHtml(alert.details && alert.details.product ? alert.details.product : '');
                     message = `USB device connected${vendor ? `: <strong>${vendor} ${product}</strong>` : ''}`;
                     if (alert.details && Object.keys(alert.details).length > 0) {
                         contextInfo = Object.entries(alert.details)
                             .filter(([k]) => k !== 'vendor' && k !== 'product')
-                            .map(([k, v]) => `<span class="badge bg-secondary me-1">${k}: ${v}</span>`)
+                            .map(([k, v]) => `<span class="badge bg-secondary me-1">${escapeHtml(k)}: ${escapeHtml(v)}</span>`)
                             .join('');
                     }
                     break;
                 case 'USB_DISCONNECTED':
                     icon = 'fa-usb'; color = 'secondary';
-                    const disVendor = alert.details && alert.details.vendor ? alert.details.vendor : '';
-                    const disProduct = alert.details && alert.details.product ? alert.details.product : '';
+                    const disVendor = escapeHtml(alert.details && alert.details.vendor ? alert.details.vendor : '');
+                    const disProduct = escapeHtml(alert.details && alert.details.product ? alert.details.product : '');
                     message = `USB device disconnected${disVendor ? `: <strong>${disVendor} ${disProduct}</strong>` : ''}`;
                     break;
                 case 'RESOURCE':
@@ -954,7 +1790,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
                 default:
                     if (!message) {
-                        message = alert.description || 'Security event detected';
+                        message = escapeHtml(alert.description || 'Security event detected');
                     }
             }
             
@@ -968,13 +1804,15 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             const severityColor = severityColors[severity] || 'info';
             
+            const hostname = escapeHtml(alert.hostname || alert.agentId || 'Unknown Agent');
+
             return `
-              <div class="timeline-entry mb-3 p-3 bg-dark border-start border-${severityColor} border-3 rounded">
+              <div class="timeline-entry mb-3 p-3 bg-dark border-start border-${severityColor} border-3 rounded shadow-sm">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                   <div class="flex-grow-1">
                     <div class="d-flex align-items-center mb-1">
                       <i class="fas ${icon} me-2 text-${severityColor}"></i>
-                      <strong class="text-white">${alert.hostname || alert.agentId || 'Unknown Agent'}</strong>
+                      <strong class="text-white">${hostname}</strong>
                     </div>
                     <div class="text-light mb-1">${message}</div>
                     ${contextInfo ? `<div class="mt-2">${contextInfo}</div>` : ''}
@@ -983,7 +1821,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="d-flex justify-content-between align-items-center">
                   <small class="text-muted"><i class="fas fa-clock me-1"></i>${formatRelativeTime(alert.timestamp)}</small>
-                  ${alert.agentId ? `<small class="text-muted"><code>${alert.agentId.substring(0, 12)}...</code></small>` : ''}
+                  ${alert.agentId ? `<small class="text-muted"><code>${escapeHtml(alert.agentId.substring(0, 12))}...</code></small>` : ''}
                 </div>
               </div>
             `;
@@ -1024,13 +1862,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const severity = (event.severity || event.event_type || 'INFO').toUpperCase();
             const icon = eventType === 'ERROR' ? 'fa-exclamation-circle' : 'fa-exclamation-triangle';
             const color = eventType === 'ERROR' ? 'danger' : 'warning';
-            const message = event.message || event.details?.message || 'Windows Event';
-            const source = event.source || event.details?.source || 'Unknown';
-            const logType = event.log_type || event.details?.log_type || 'System';
-            const eventId = event.event_id || event.details?.event_id || '';
+            const message = escapeHtml(event.message || event.details?.message || 'Windows Event');
+            const source = escapeHtml(event.source || event.details?.source || 'Unknown');
+            const logType = escapeHtml(event.log_type || event.details?.log_type || 'System');
+            const eventId = escapeHtml(event.event_id || event.details?.event_id || '');
+            const hostname = escapeHtml(meta.hostname || 'N/A');
+            const ipAddress = escapeHtml(meta.ipAddress || 'N/A');
+            const agentId = escapeHtml((meta.agentId || '').toString().slice(0, 12));
+            const username = escapeHtml(meta.username || 'N/A');
             
             return `
-                <div class="timeline-entry mb-3 p-3 bg-dark border-start border-${color} border-3 rounded">
+                <div class="timeline-entry mb-3 p-3 bg-dark border-start border-${color} border-3 rounded shadow-sm">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div class="flex-grow-1">
                             <div class="d-flex align-items-center mb-1">
@@ -1038,10 +1880,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <strong class="text-white">${logType} - ${source}</strong>
                             </div>
                             <div class="text-muted small mb-1">
-                                <span class="badge bg-secondary me-1">Host: ${meta.hostname || 'N/A'}</span>
-                                <span class="badge bg-secondary me-1">IP: ${meta.ipAddress || 'N/A'}</span>
-                                <span class="badge bg-secondary me-1">Agent: ${(meta.agentId || '').toString().slice(0, 12)}${meta.agentId && meta.agentId.length > 12 ? '…' : ''}</span>
-                                <span class="badge bg-secondary">User: ${meta.username || 'N/A'}</span>
+                                <span class="badge bg-secondary me-1">Host: ${hostname}</span>
+                                <span class="badge bg-secondary me-1">IP: ${ipAddress}</span>
+                                <span class="badge bg-secondary me-1">Agent: ${agentId}${meta.agentId && meta.agentId.length > 12 ? '…' : ''}</span>
+                                <span class="badge bg-secondary">User: ${username}</span>
                             </div>
                             <div class="text-light mb-1">${message.substring(0, 300)}</div>
                         </div>
@@ -1362,19 +2204,89 @@ document.addEventListener('DOMContentLoaded', () => {
     if (scanForm) {
         scanForm.addEventListener('submit', event => {
             event.preventDefault();
-            const target = scanForm['target-input'].value;
-            const scanType = scanForm['scan-type'].value;
-            const customCommand = scanForm['custom-command'].value.trim();
-            const nseScripts = scanForm['nse-scripts'].value;
-            const pentesterName = scanForm['pentester-name'].value.trim() || 'Security Analyst';
+            const target = document.getElementById('target-input')?.value || '';
+
+            if (!validateTargetInput(target)) {
+                showNotification('Please enter a valid target address', 'warning');
+                return;
+            }
+
+            const scanType = document.getElementById('scan-type')?.value || '';
+            const customCommand = document.getElementById('custom-command')?.value?.trim() || '';
+            const nseScripts = document.getElementById('nse-scripts')?.value || '';
+            const pentesterName = document.getElementById('pentester-name')?.value?.trim() || 'Security Analyst';
 
             let command = scanType === 'custom' ? customCommand : scanType;
-            command += ` ${nseScripts}`;
-            socket.emit('start-scan', { target, command, pentester: pentesterName });
-            scanStatus.textContent = 'Scanning...';
-            scanProgress.style.width = '0%';
+            if (nseScripts) {
+                command += ` ${nseScripts}`;
+            }
+
+            const stopBtn = document.getElementById('stop-scan-btn');
+            if (stopBtn) stopBtn.disabled = false;
+
+            const startBtn = document.getElementById('start-scan-btn');
+            if (startBtn) {
+                startBtn.disabled = true;
+                startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Scanning...';
+            }
+
+            // Immediately clear and show intent on frontend
             clearOutput();
+            appendOutput(`[FRONTEND] Initiating scan for: ${target}`, 'info');
+            appendOutput(`[FRONTEND] Command: nmap ${command}`, 'info');
+            
+            console.log('[Frontend] Emitting start-scan:', { target, command, pentester: pentesterName });
+            socket.emit('start-scan', { target, command, pentester: pentesterName });
+            
+            if (scanStatus) {
+                scanStatus.innerHTML = '<i class="fas fa-satellite-dish fa-spin me-1"></i>Waiting for backend response...';
+            }
+            if (scanProgress) {
+                scanProgress.style.width = '0%';
+                scanProgress.textContent = '0%';
+            }
         });
+    }
+
+    // Add a global function for testing socket connectivity
+    window.testSocket = () => {
+        console.log('[Frontend] Manual socket test emit');
+        socket.emit('test-connection', { timestamp: Date.now() });
+        appendOutput('[FRONTEND] Manual socket test emitted', 'info');
+    };
+
+    const targetInput = document.getElementById('target-input');
+    if (targetInput) {
+        targetInput.addEventListener('blur', function() {
+            const value = this.value.trim();
+            if (value) {
+                validateTargetInput(value);
+            }
+        });
+
+        targetInput.addEventListener('input', function() {
+            this.classList.remove('is-valid', 'is-invalid');
+            const feedback = document.getElementById('target-validation-feedback');
+            const suggestion = document.getElementById('target-validation-suggestion');
+            if (feedback) feedback.textContent = '';
+            if (suggestion) suggestion.classList.add('d-none');
+        });
+    }
+
+    const loadScanBtn = document.getElementById('load-scan-btn');
+    if (loadScanBtn) loadScanBtn.addEventListener('click', loadSelectedScan);
+
+    const showCurrentBtn = document.getElementById('show-current-btn');
+    if (showCurrentBtn) showCurrentBtn.addEventListener('click', showCurrentScan);
+
+    const resetScanBtn = document.getElementById('reset-scan-btn');
+    if (resetScanBtn) {
+        resetScanBtn.addEventListener('click', resetScanForm);
+    }
+
+    const stopScanBtn = document.getElementById('stop-scan-btn');
+    if (stopScanBtn) {
+        stopScanBtn.addEventListener('click', stopScan);
     }
 
 
@@ -1670,7 +2582,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load history on page load
     loadHistory();
     loadReports();
-    
+    loadPastScansFromServer();
+
+    const reportFilterPentester = document.getElementById('report-filter-pentester');
+    const reportFilterScanType = document.getElementById('report-filter-scan-type');
+    const reportFilterDate = document.getElementById('report-filter-date');
+    const reportFilterMonth = document.getElementById('report-filter-month');
+    const reportFilterResetBtn = document.getElementById('report-filter-reset-btn');
+    const reportDownloadFilteredBtn = document.getElementById('report-download-filtered-btn');
+
+    if (reportFilterPentester) reportFilterPentester.addEventListener('change', applyReportFilters);
+    if (reportFilterScanType) reportFilterScanType.addEventListener('change', applyReportFilters);
+    if (reportFilterDate) reportFilterDate.addEventListener('change', applyReportFilters);
+    if (reportFilterMonth) reportFilterMonth.addEventListener('change', applyReportFilters);
+    if (reportFilterResetBtn) reportFilterResetBtn.addEventListener('click', resetReportFilters);
+    if (reportDownloadFilteredBtn) reportDownloadFilteredBtn.addEventListener('click', downloadFilteredReports);
+
     // Auto-refresh every 30 seconds
     setInterval(() => {
         const activeSection = document.querySelector('.section.active');
@@ -1751,8 +2678,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const sizeKB = Math.round(report.size / 1024);
             const reportType = report.type || report.format || 'Unknown';
             const target = report.target || 'Unknown Target';
-            
-            // Get appropriate icon for file type
+
             let iconClass = 'fa-file-alt';
             if (reportType.toLowerCase() === 'pdf') {
                 iconClass = 'fa-file-pdf text-danger';
@@ -1761,9 +2687,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (reportType.toLowerCase() === 'txt') {
                 iconClass = 'fa-file-text text-secondary';
             }
-            
+
             return `
-                <div class="card mb-3 shadow-sm">
+                <div class="card mb-3 shadow-sm report-card" data-pentester="${report.pentester || ''}" data-scan-type="${report.scanType || ''}" data-created="${report.created || ''}">
                     <div class="card-body">
                         <div class="row align-items-center">
                             <div class="col-md-8">
@@ -1772,14 +2698,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </h6>
                                 <p class="card-text mb-2">
                                     <small class="text-muted">
-                                        Target: <span class="terminal-text">${target}</span> | 
-                                        Format: <span class="badge bg-secondary">${reportType}</span> | 
-                                        Size: <strong>${sizeKB} KB</strong> | 
+                                        Target: <span class="terminal-text">${target}</span> |
+                                        Format: <span class="badge bg-secondary">${reportType}</span> |
+                                        Scan: <span class="badge bg-primary">${report.scanType || 'Network Scan'}</span> |
+                                        Size: <strong>${sizeKB} KB</strong><br>
                                         Created: ${created}
                                     </small>
                                 </p>
                                 <p class="card-text mb-0">
-                                    <small class="text-info"><i class="fas fa-user-shield"></i> Generated by: ${report.pentester || 'Security Analyst'}</small>
+                                    <small class="text-info"><i class="fas fa-user-shield"></i> By: <strong>${report.pentester || 'Security Analyst'}</strong></small>
                                 </p>
                             </div>
                             <div class="col-md-4 text-end">
@@ -1795,6 +2722,136 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         }).join('');
+
+        populateReportFilters(reports);
+    }
+
+    function populateReportFilters(reports) {
+        const pentesterSelect = document.getElementById('report-filter-pentester');
+        const scanTypeSelect = document.getElementById('report-filter-scan-type');
+
+        if (!pentesterSelect || !scanTypeSelect) return;
+
+        // Get unique pentesters and scan types from the reports data
+        const pentesters = [...new Set(reports.map(r => r.pentester).filter(p => p && p !== ''))];
+        const scanTypes = [...new Set(reports.map(r => r.scanType).filter(s => s && s !== ''))];
+
+        // Store current selections to restore them if they still exist
+        const currentPentester = pentesterSelect.value;
+        const currentScanType = scanTypeSelect.value;
+
+        pentesterSelect.innerHTML = '<option value="">All pentesters</option>';
+        pentesters.sort().forEach(p => {
+            const selected = (p === currentPentester) ? 'selected' : '';
+            pentesterSelect.innerHTML += `<option value="${p}" ${selected}>${p}</option>`;
+        });
+
+        scanTypeSelect.innerHTML = '<option value="">All scan types</option>';
+        scanTypes.sort().forEach(s => {
+            const selected = (s === currentScanType) ? 'selected' : '';
+            scanTypeSelect.innerHTML += `<option value="${s}" ${selected}>${s}</option>`;
+        });
+    }
+
+    function applyReportFilters() {
+        const pentesterFilter = document.getElementById('report-filter-pentester')?.value || '';
+        const scanTypeFilter = document.getElementById('report-filter-scan-type')?.value || '';
+        const dateFilter = document.getElementById('report-filter-date')?.value || '';
+        const monthFilter = document.getElementById('report-filter-month')?.value || '';
+
+        const reportCards = document.querySelectorAll('.report-card');
+        let visibleCount = 0;
+
+        reportCards.forEach(card => {
+            const cardPentester = card.getAttribute('data-pentester') || '';
+            const cardScanType = card.getAttribute('data-scan-type') || '';
+            const cardCreated = card.getAttribute('data-created') || '';
+
+            let show = true;
+
+            if (pentesterFilter && cardPentester !== pentesterFilter) {
+                show = false;
+            }
+
+            if (scanTypeFilter && cardScanType !== scanTypeFilter) {
+                show = false;
+            }
+
+            if (dateFilter) {
+                const filterDate = new Date(dateFilter).toDateString();
+                const cardDate = new Date(cardCreated).toDateString();
+                if (filterDate !== cardDate) {
+                    show = false;
+                }
+            }
+
+            if (monthFilter) {
+                const cardMonth = new Date(cardCreated).getMonth() + 1;
+                if (parseInt(monthFilter) !== cardMonth) {
+                    show = false;
+                }
+            }
+
+            card.style.display = show ? '' : 'none';
+            if (show) visibleCount++;
+        });
+
+        const filteredCountEl = document.getElementById('reports-filtered-count');
+        if (filteredCountEl) {
+            filteredCountEl.textContent = `${visibleCount} shown`;
+        }
+    }
+
+    function resetReportFilters() {
+        const pentesterSelect = document.getElementById('report-filter-pentester');
+        const scanTypeSelect = document.getElementById('report-filter-scan-type');
+        const dateFilter = document.getElementById('report-filter-date');
+        const monthFilter = document.getElementById('report-filter-month');
+
+        if (pentesterSelect) pentesterSelect.value = '';
+        if (scanTypeSelect) scanTypeSelect.value = '';
+        if (dateFilter) dateFilter.value = '';
+        if (monthFilter) monthFilter.value = '';
+
+        document.querySelectorAll('.report-card').forEach(card => {
+            card.style.display = '';
+        });
+
+        const filteredCountEl = document.getElementById('reports-filtered-count');
+        if (filteredCountEl) {
+            const totalCards = document.querySelectorAll('.report-card').length;
+            filteredCountEl.textContent = `${totalCards} shown`;
+        }
+
+        showNotification('Report filters have been reset', 'info');
+    }
+
+    function downloadFilteredReports() {
+        const visibleCards = document.querySelectorAll('.report-card:not([style*="display: none"])');
+        const visibleReports = [];
+
+        visibleCards.forEach(card => {
+            const filename = card.querySelector('.card-title')?.textContent?.trim() || '';
+            if (filename) {
+                visibleReports.push(filename);
+            }
+        });
+
+        if (visibleReports.length === 0) {
+            showNotification('No reports to download', 'warning');
+            return;
+        }
+
+        if (visibleReports.length === 1) {
+            downloadReportFile(visibleReports[0]);
+        } else {
+            showNotification(`Downloading ${visibleReports.length} reports...`, 'info');
+            visibleReports.forEach((filename, index) => {
+                setTimeout(() => {
+                    downloadReportFile(filename);
+                }, index * 500);
+            });
+        }
     }
 
     async function viewReport(filename) {

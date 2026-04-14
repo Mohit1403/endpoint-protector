@@ -226,12 +226,10 @@ class ReportGenerator {
     
     async generatePDFReport(scanData) {
         try {
-            // Validate input data
             if (!scanData) {
                 throw new Error('Scan data is required for PDF generation');
             }
 
-            // Ensure required fields have default values
             const safeData = {
                 target: scanData.target || 'Unknown Target',
                 pentester: scanData.pentester || 'Security Analyst',
@@ -244,174 +242,383 @@ class ReportGenerator {
 
             const analysis = this.parseNmapOutput(safeData.output);
             const reportId = this.generateReportId();
-            
-            const doc = new jsPDF();
+
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
             const pageWidth = doc.internal.pageSize.getWidth();
-            const margin = 20;
-            let currentY = 20;
-            
-            // Helper function to add text with word wrapping and error handling
-            const addText = (text, x, y, maxWidth = pageWidth - 2 * margin, fontSize = 12, fontStyle = 'normal') => {
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 15;
+            const contentWidth = pageWidth - (2 * margin);
+            let currentY = margin;
+
+            const colors = {
+                primary: [0, 100, 200],
+                secondary: [100, 100, 100],
+                success: [40, 167, 69],
+                warning: [255, 193, 7],
+                danger: [220, 53, 69],
+                info: [23, 162, 184],
+                dark: [33, 37, 41],
+                light: [248, 249, 250],
+                text: [52, 58, 64],
+                gridLine: [220, 220, 220],
+                headerBg: [41, 98, 255],
+                cardBg: [250, 250, 250]
+            };
+
+            const addText = (text, x, y, maxWidth = contentWidth, fontSize = 10, fontStyle = 'normal', textColor = colors.text) => {
                 try {
                     doc.setFontSize(fontSize);
                     doc.setFont(undefined, fontStyle);
-                    const safeText = String(text || '').replace(/[^\x00-\x7F]/g, '?'); // Replace non-ASCII chars
+                    doc.setTextColor(textColor[0], textColor[1], textColor[2]);
+                    const safeText = String(text || '').replace(/[^\x00-\x7F]/g, '?');
                     const splitText = doc.splitTextToSize(safeText, maxWidth);
                     doc.text(splitText, x, y);
-                    return y + (splitText.length * (fontSize * 0.4));
-                } catch (textError) {
-                    console.warn('Error adding text to PDF:', textError);
+                    return y + (splitText.length * (fontSize * 0.45));
+                } catch (e) {
                     return y + fontSize;
                 }
             };
-            
-            // Add header with professional styling
-            try {
-                doc.setFillColor(41, 98, 255);
-                doc.rect(0, 0, pageWidth, 40, 'F');
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(24);
-                doc.setFont(undefined, 'bold');
-                doc.text('PENETRATION TESTING REPORT', pageWidth / 2, 25, { align: 'center' });
-            } catch (headerError) {
-                console.warn('Error adding header to PDF:', headerError);
-                doc.setTextColor(0, 0, 0);
-                doc.setFontSize(18);
-                doc.text('PENETRATION TESTING REPORT', margin, 25);
-            }
-            
-            currentY = 60;
-            doc.setTextColor(0, 0, 0);
-            doc.setFont(undefined, 'normal');
-            
-            // Report metadata
-            try {
-                doc.setFillColor(240, 240, 240);
-                doc.rect(margin, currentY - 10, pageWidth - 2 * margin, 80, 'F');
-            } catch (bgError) {
-                console.warn('Error adding background to PDF:', bgError);
-            }
-            
-            currentY = addText('REPORT INFORMATION', margin + 10, currentY + 5, undefined, 14, 'bold');
-            
-            currentY = addText(`Report ID: ${reportId}`, margin + 10, currentY + 5) + 3;
-            currentY = addText(`Pentester: ${safeData.pentester}`, margin + 10, currentY) + 3;
-            currentY = addText(`Target: ${safeData.target}`, margin + 10, currentY) + 3;
-            
-            try {
-                const scanDate = this.formatTimestamp(new Date(safeData.startTime));
-                currentY = addText(`Scan Date: ${scanDate}`, margin + 10, currentY) + 3;
-            } catch (dateError) {
-                console.warn('Error formatting date:', dateError);
-                currentY = addText(`Scan Date: ${safeData.startTime}`, margin + 10, currentY) + 3;
-            }
-            
-            currentY = addText(`Duration: ${safeData.duration}`, margin + 10, currentY) + 3;
-            currentY = addText(`Scan Type: ${safeData.scanType}`, margin + 10, currentY) + 3;
-            currentY = addText(`Status: ${safeData.status}`, margin + 10, currentY) + 15;
-            
-            // Executive Summary
-            currentY = addText('EXECUTIVE SUMMARY', margin, currentY, undefined, 16, 'bold') + 5;
-            currentY = addText(analysis.summary, margin, currentY, undefined, 11) + 15;
-            
-            // Statistics section
-            currentY = addText('SCAN STATISTICS', margin, currentY, undefined, 16, 'bold') + 5;
-            
-            const stats = [
-                `Hosts Found: ${analysis.hostsFound}`,
-                `Open Ports: ${analysis.portsOpen}`,
-                `Services Detected: ${analysis.services.length}`,
-                `Security Considerations: ${analysis.vulnerabilities.length}`
-            ];
-            
-            stats.forEach(stat => {
-                currentY = addText(`• ${stat}`, margin + 10, currentY, undefined, 11) + 3;
-            });
-            currentY += 10;
-            
-            // Services section (if any)
-            if (analysis.services.length > 0) {
-                currentY = addText('DISCOVERED SERVICES', margin, currentY, undefined, 16, 'bold') + 10;
-                analysis.services.forEach(service => {
-                    if (currentY > 260) { 
-                        doc.addPage(); 
-                        currentY = 20; 
-                        currentY = addText('DISCOVERED SERVICES (CONTINUED)', margin, currentY, undefined, 16, 'bold') + 10;
-                    }
-                    const serviceText = `• Port ${service.port}: ${service.service} (Open)`;
-                    currentY = addText(serviceText, margin + 10, currentY, undefined, 11) + 3;
-                });
-                currentY += 10;
-            }
-            
-            // Security considerations (if any)
-            if (analysis.vulnerabilities.length > 0) {
-                if (currentY > 200) { doc.addPage(); currentY = 20; }
-                currentY = addText('SECURITY CONSIDERATIONS', margin, currentY, undefined, 16, 'bold') + 10;
-                analysis.vulnerabilities.forEach((vuln, index) => {
-                    if (currentY > 260) { 
-                        doc.addPage(); 
-                        currentY = 20; 
-                        currentY = addText('SECURITY CONSIDERATIONS (CONTINUED)', margin, currentY, undefined, 16, 'bold') + 10;
-                    }
-                    currentY = addText(`${index + 1}. ${vuln}`, margin + 10, currentY, undefined, 11) + 5;
-                });
-                currentY += 10;
-            }
-            
-            // Raw scan output section
-            if (currentY > 200) { doc.addPage(); currentY = 20; }
-            currentY = addText('RAW SCAN OUTPUT', margin, currentY, undefined, 16, 'bold') + 10;
-            
-            try {
-                doc.setFont('courier', 'normal');
-            } catch (fontError) {
-                console.warn('Error setting courier font, using default:', fontError);
-                doc.setFont(undefined, 'normal');
-            }
-            
-            const output = safeData.output;
-            const outputLines = output.split('\n');
-            
-            // Limit output lines to prevent memory issues
-            const maxLines = 500;
-            const linesToProcess = outputLines.slice(0, maxLines);
-            if (outputLines.length > maxLines) {
-                linesToProcess.push('...', `[Output truncated - ${outputLines.length - maxLines} additional lines not shown]`);
-            }
-            
-            linesToProcess.forEach((line, index) => {
-                if (currentY > 270) {
-                    doc.addPage();
-                    currentY = 20;
-                    currentY = addText('RAW SCAN OUTPUT (CONTINUED)', margin, currentY, undefined, 16, 'bold') + 10;
+
+            const drawRect = (x, y, w, h, fillColor, strokeColor = null) => {
+                if (fillColor) {
+                    doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
                 }
-                // Clean the line to avoid PDF generation issues
-                const cleanLine = String(line).replace(/[^\x00-\x7F]/g, '?').substring(0, 100);
-                currentY = addText(cleanLine, margin, currentY, undefined, 8) + 2;
+                if (strokeColor) {
+                    doc.setDrawColor(strokeColor[0], strokeColor[1], strokeColor[2]);
+                    doc.rect(x, y, w, h, 'FD');
+                } else {
+                    doc.rect(x, y, w, h, 'F');
+                }
+            };
+
+            const drawLine = (x1, y1, x2, y2, color = colors.gridLine, width = 0.5) => {
+                doc.setDrawColor(color[0], color[1], color[2]);
+                doc.setLineWidth(width);
+                doc.line(x1, y1, x2, y2);
+            };
+
+            const checkNewPage = (neededHeight) => {
+                if (currentY + neededHeight > pageHeight - 30) {
+                    doc.addPage();
+                    currentY = margin;
+                    return true;
+                }
+                return false;
+            };
+
+            const drawHeader = () => {
+                doc.setFillColor(colors.headerBg[0], colors.headerBg[1], colors.headerBg[2]);
+                doc.rect(0, 0, pageWidth, 35, 'F');
+
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(22);
+                doc.setFont(undefined, 'bold');
+                doc.text('PENETRATION TESTING REPORT', pageWidth / 2, 15, { align: 'center' });
+
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                doc.text('Professional Security Assessment', pageWidth / 2, 23, { align: 'center' });
+
+                doc.setFontSize(8);
+                doc.text(`Report ID: ${reportId}`, pageWidth / 2, 31, { align: 'center' });
+
+                currentY = 45;
+            };
+
+            const drawFooter = (pageNum, totalPages) => {
+                doc.setFontSize(8);
+                doc.setTextColor(128, 128, 128);
+                doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+                doc.text(`Generated by AutoPentrix | ${new Date().toLocaleString()}`, pageWidth / 2, pageHeight - 6, { align: 'center' });
+            };
+
+            const drawCard = (title, contentY, contentHeight) => {
+                checkNewPage(contentHeight + 20);
+
+                drawRect(margin, currentY, contentWidth, contentHeight + 15, colors.cardBg, colors.gridLine);
+
+                doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+                doc.rect(margin, currentY, contentWidth, 10, 'F');
+
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text(title, margin + 5, currentY + 7);
+
+                currentY += 15;
+                return currentY;
+            };
+
+            drawHeader();
+
+            doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+
+            const infoCardY = currentY;
+            const infoCardHeight = 35;
+            drawRect(margin, infoCardY, contentWidth, infoCardHeight, colors.cardBg, colors.gridLine);
+
+            doc.setFillColor(colors.dark[0], colors.dark[1], colors.dark[2]);
+            doc.rect(margin, infoCardY, contentWidth, 8, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'bold');
+            doc.text('SCAN INFORMATION', margin + 3, infoCardY + 5.5);
+
+            currentY = infoCardY + 12;
+            doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+
+            const col1X = margin + 5;
+            const col2X = margin + contentWidth / 2 + 5;
+
+            currentY = addText(`Penetester: ${safeData.pentester}`, col1X, currentY, contentWidth / 2 - 5, 9, 'normal') + 1;
+            currentY = addText(`Target: ${safeData.target}`, col1X, currentY, contentWidth / 2 - 5, 9, 'normal') + 1;
+            currentY = addText(`Scan Date: ${this.formatTimestamp(new Date(safeData.startTime))}`, col1X, currentY, contentWidth / 2 - 5, 9, 'normal') + 1;
+
+            const tempY = infoCardY + 12;
+            currentY = addText(`Duration: ${safeData.duration}`, col2X, tempY, contentWidth / 2 - 5, 9, 'normal') + 1;
+            currentY = addText(`Scan Type: ${safeData.scanType}`, col2X, currentY, contentWidth / 2 - 5, 9, 'normal') + 1;
+            currentY = addText(`Status: ${safeData.status}`, col2X, currentY, contentWidth / 2 - 5, 9, 'normal') + 5;
+
+            currentY += 8;
+
+            const summaryCardY = currentY;
+            checkNewPage(50);
+            drawRect(margin, summaryCardY, contentWidth, 30, colors.cardBg, colors.gridLine);
+
+            doc.setFillColor(colors.dark[0], colors.dark[1], colors.dark[2]);
+            doc.rect(margin, summaryCardY, contentWidth, 10, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'bold');
+            doc.text('EXECUTIVE SUMMARY', margin + 3, summaryCardY + 7);
+
+            currentY = summaryCardY + 14;
+            doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+            currentY = addText(analysis.summary, margin + 5, currentY, contentWidth - 10, 9, 'normal') + 5;
+
+            currentY += 5;
+
+            checkNewPage(80);
+            currentY = drawCard('SCAN STATISTICS', currentY, 35);
+
+            const statBoxWidth = (contentWidth - 15) / 4;
+            const stats = [
+                { label: 'Hosts Found', value: analysis.hostsFound, color: colors.primary },
+                { label: 'Open Ports', value: analysis.portsOpen, color: colors.success },
+                { label: 'Services', value: analysis.services.length, color: colors.info },
+                { label: 'Vulnerabilities', value: analysis.vulnerabilities.length, color: colors.warning }
+            ];
+
+            stats.forEach((stat, i) => {
+                const boxX = margin + 3 + (i * statBoxWidth);
+                const boxY = currentY;
+                const boxHeight = 25;
+
+                drawRect(boxX, boxY, statBoxWidth - 3, boxHeight, [255, 255, 255], stat.color);
+
+                doc.setTextColor(stat.color[0], stat.color[1], stat.color[2]);
+                doc.setFontSize(18);
+                doc.setFont(undefined, 'bold');
+                doc.text(String(stat.value), boxX + statBoxWidth / 2 - 3, boxY + 12, { align: 'center' });
+
+                doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+                doc.setFontSize(7);
+                doc.setFont(undefined, 'normal');
+                doc.text(stat.label, boxX + statBoxWidth / 2 - 3, boxY + 20, { align: 'center' });
             });
-            
-            // Footer
-            try {
-                const pageCount = doc.internal.getNumberOfPages();
-                for (let i = 1; i <= pageCount; i++) {
-                    doc.setPage(i);
+
+            currentY += 30;
+
+            checkNewPage(80);
+            currentY = drawCard('PORT DISTRIBUTION', currentY, 50);
+
+            if (analysis.services.length > 0) {
+                const portCounts = {};
+                analysis.services.forEach(svc => {
+                    const serviceName = svc.service.toLowerCase();
+                    portCounts[serviceName] = (portCounts[serviceName] || 0) + 1;
+                });
+
+                const sortedPorts = Object.entries(portCounts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+                const barHeight = 6;
+                const maxBarWidth = contentWidth - 80;
+
+                sortedPorts.forEach(([port, count], i) => {
+                    const barY = currentY + (i * (barHeight + 3));
+                    const barWidth = Math.min((count / sortedPorts[0][1]) * maxBarWidth, maxBarWidth);
+
                     doc.setFontSize(8);
                     doc.setFont(undefined, 'normal');
-                    doc.setTextColor(128, 128, 128);
-                    const footerText1 = `Generated by Automated Penetration Testing Tool - Page ${i} of ${pageCount}`;
-                    const footerText2 = `Report generated on ${this.formatTimestamp()}`;
-                    doc.text(footerText1, pageWidth / 2, 285, { align: 'center' });
-                    doc.text(footerText2, pageWidth / 2, 290, { align: 'center' });
-                }
-            } catch (footerError) {
-                console.warn('Error adding footer to PDF:', footerError);
+                    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+                    doc.text(port.substring(0, 15), margin + 5, barY + 4);
+
+                    drawRect(margin + 45, barY - 2, barWidth, barHeight, colors.primary);
+
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFontSize(7);
+                    doc.text(String(count), margin + 45 + barWidth / 2, barY + 3.5, { align: 'center' });
+                });
+
+                currentY += sortedPorts.length * (barHeight + 3) + 5;
+            } else {
+                currentY = addText('No services detected.', margin + 5, currentY, contentWidth - 10, 9, 'italic') + 5;
             }
-            
+
+            if (analysis.services.length > 0) {
+                checkNewPage(80);
+                currentY = drawCard('SERVICES OVERVIEW BY PORT RANGE', currentY, 35);
+
+                const portRanges = {
+                    'Well-Known (0-1023)': 0,
+                    'Registered (1024-49151)': 0,
+                    'Dynamic (49152+)': 0
+                };
+
+                analysis.services.forEach(svc => {
+                    const port = parseInt(svc.port.split('/')[0]);
+                    if (port <= 1023) portRanges['Well-Known (0-1023)']++;
+                    else if (port <= 49151) portRanges['Registered (1024-49151)']++;
+                    else portRanges['Dynamic (49152+)']++;
+                });
+
+                const rangeColors = [colors.success, colors.info, colors.warning];
+                const rangeBoxWidth = (contentWidth - 10) / 3;
+                let rangeIndex = 0;
+
+                for (const [range, count] of Object.entries(portRanges)) {
+                    const boxX = margin + 3 + (rangeIndex * rangeBoxWidth);
+                    const boxY = currentY;
+                    const boxHeight = 25;
+
+                    drawRect(boxX, boxY, rangeBoxWidth - 3, boxHeight, [255, 255, 255], rangeColors[rangeIndex]);
+
+                    doc.setTextColor(rangeColors[rangeIndex][0], rangeColors[rangeIndex][1], rangeColors[rangeIndex][2]);
+                    doc.setFontSize(12);
+                    doc.setFont(undefined, 'bold');
+                    doc.text(String(count), boxX + rangeBoxWidth / 2 - 3, boxY + 12, { align: 'center' });
+
+                    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+                    doc.setFontSize(6);
+                    doc.setFont(undefined, 'normal');
+                    doc.text(range, boxX + rangeBoxWidth / 2 - 3, boxY + 20, { align: 'center' });
+
+                    rangeIndex++;
+                }
+
+                currentY += 30;
+            }
+
+            if (analysis.vulnerabilities.length > 0) {
+                checkNewPage(100);
+                currentY = drawCard('SECURITY CONSIDERATIONS & RECOMMENDATIONS', currentY, 60);
+
+                const vulnInfo = {
+                    'ssh': { risk: 'MEDIUM', name: 'SSH', damages: ['Brute-force attacks', 'Weak credentials'], recommendations: ['Use key-based auth', 'Disable root login', 'Implement fail2ban'] },
+                    'http': { risk: 'HIGH', name: 'HTTP', damages: ['Data interception', 'Session hijacking'], recommendations: ['Enable HTTPS', 'Implement HSTS', 'Use TLS 1.2+'] },
+                    'https': { risk: 'LOW', name: 'HTTPS', damages: ['SSL/TLS vulnerabilities'], recommendations: ['Use TLS 1.3', 'Regular cert renewal'] },
+                    'ftp': { risk: 'HIGH', name: 'FTP', damages: ['Credential theft', 'Data interception'], recommendations: ['Use SFTP/SCP', 'Disable anonymous access'] },
+                    'telnet': { risk: 'CRITICAL', name: 'Telnet', damages: ['Complete credential compromise', 'Session hijacking'], recommendations: ['Disable immediately', 'Use SSH instead'] },
+                    'smtp': { risk: 'MEDIUM', name: 'SMTP', damages: ['Open relay', 'User enumeration'], recommendations: ['Restrict relay', 'Implement SPF/DKIM'] },
+                    'dns': { risk: 'MEDIUM', name: 'DNS', damages: ['Cache poisoning', 'Zone transfers'], recommendations: ['Disable zone transfers', 'Implement DNSSEC'] },
+                    'msrpc': { risk: 'HIGH', name: 'MS RPC', damages: ['Remote code execution', 'Lateral movement'], recommendations: ['Block port 135', 'Apply patches'] },
+                    'netbios': { risk: 'HIGH', name: 'NetBIOS', damages: ['Network enumeration', 'SMB relay'], recommendations: ['Disable NetBIOS', 'Block ports 137-139'] },
+                    'smb': { risk: 'CRITICAL', name: 'SMB', damages: ['EternalBlue exploits', 'Ransomware delivery'], recommendations: ['Block port 445', 'Apply MS17-010 patch', 'Disable SMBv1'] },
+                    'rdp': { risk: 'CRITICAL', name: 'RDP', damages: ['BlueKeep', 'Brute-force', 'Ransomware'], recommendations: ['Enable NLA', 'Use VPN', 'Strong passwords'] }
+                };
+
+                analysis.vulnerabilities.forEach((vuln, idx) => {
+                    checkNewPage(35);
+
+                    const vulnKey = Object.keys(vulnInfo).find(key => vuln.toLowerCase().includes(key));
+                    const info = vulnKey ? vulnInfo[vulnKey] : { risk: 'MEDIUM', name: 'Unknown', damages: [], recommendations: [] };
+
+                    const riskColor = info.risk === 'CRITICAL' ? colors.danger : info.risk === 'HIGH' ? colors.warning : colors.info;
+
+                    doc.setFillColor(riskColor[0], riskColor[1], riskColor[2]);
+                    doc.rect(margin + 3, currentY - 3, 3, 12, 'F');
+
+                    doc.setTextColor(colors.dark[0], colors.dark[1], colors.dark[2]);
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    doc.text(`${idx + 1}. ${info.name} - ${info.risk} RISK`, margin + 10, currentY + 3);
+
+                    currentY += 8;
+                    doc.setFont(undefined, 'normal');
+                    doc.setFontSize(8);
+
+                    currentY = addText(`Damages: ${info.damages.join(', ')}`, margin + 10, currentY, contentWidth - 15, 8, 'normal') + 1;
+                    currentY = addText(`Recommendations: ${info.recommendations.join(', ')}`, margin + 10, currentY, contentWidth - 15, 8, 'normal', colors.success) + 5;
+                });
+            }
+
+            if (analysis.services.length > 0) {
+                checkNewPage(80);
+                currentY = drawCard('DISCOVERED SERVICES', currentY, 50);
+
+                const serviceColors = [colors.primary, colors.success, colors.info, colors.warning, colors.secondary];
+                const servicesPerRow = 2;
+                const serviceBoxWidth = (contentWidth - 10) / servicesPerRow;
+
+                for (let i = 0; i < analysis.services.length && i < 10; i++) {
+                    const svc = analysis.services[i];
+                    const row = Math.floor(i / servicesPerRow);
+                    const col = i % servicesPerRow;
+                    const boxX = margin + 3 + (col * serviceBoxWidth);
+                    const boxY = currentY + (row * 18);
+
+                    if (boxY + 18 > pageHeight - 30) break;
+
+                    drawRect(boxX, boxY, serviceBoxWidth - 3, 15, [255, 255, 255], serviceColors[i % serviceColors.length]);
+
+                    doc.setTextColor(serviceColors[i % serviceColors.length][0], serviceColors[i % serviceColors.length][1], serviceColors[i % serviceColors.length][2]);
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    doc.text(`Port ${svc.port}`, boxX + 3, boxY + 6);
+
+                    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+                    doc.setFontSize(8);
+                    doc.setFont(undefined, 'normal');
+                    doc.text(svc.service, boxX + 3, boxY + 12);
+                }
+
+                currentY += Math.ceil(Math.min(analysis.services.length, 10) / servicesPerRow) * 18 + 5;
+            }
+
+            checkNewPage(100);
+            currentY = drawCard('RAW SCAN OUTPUT', currentY, 80);
+
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(colors.secondary[0], colors.secondary[1], colors.secondary[2]);
+
+            const outputLines = safeData.output.split('\n').slice(0, 100);
+            outputLines.forEach((line, idx) => {
+                checkNewPage(5);
+                const cleanLine = String(line).replace(/[^\x00-\x7F]/g, '?').substring(0, 120);
+                doc.text(`${idx + 1}. ${cleanLine}`, margin + 5, currentY);
+                currentY += 4;
+            });
+
+            if (safeData.output.split('\n').length > 100) {
+                currentY += 3;
+                doc.setTextColor(colors.warning[0], colors.warning[1], colors.warning[2]);
+                doc.text(`[Output truncated - ${safeData.output.split('\n').length - 100} additional lines not shown]`, margin + 5, currentY);
+            }
+
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                doc.setPage(i);
+                drawFooter(i, totalPages);
+            }
+
             return doc.output('arraybuffer');
-        } catch(error) {
+        } catch (error) {
             console.error("PDF Generation Failed:", error);
-            console.error('Scan data that caused error:', JSON.stringify(scanData, null, 2));
             throw new Error(`Failed to generate PDF report: ${error.message}`);
         }
     }

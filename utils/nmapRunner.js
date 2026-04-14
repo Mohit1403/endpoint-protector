@@ -131,6 +131,8 @@ class NmapRunner {
                     callback(`Failed to start nmap: ${error.message}`, null);
                 }
             });
+
+            return nmap; // Return the process object so it can be killed if needed
             
         } catch (err) {
             console.error(`Failed to run Nmap: ${err.message}`);

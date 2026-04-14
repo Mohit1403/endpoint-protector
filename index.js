@@ -197,6 +197,19 @@ app.get('/api/history/scans', async (req, res) => {
   }
 });
 
+app.get('/api/history/scan/:id', async (req, res) => {
+  try {
+    const scan = await historyManager.getScanById(req.params.id);
+    if (!scan) {
+      return res.status(404).json({ error: 'Scan not found' });
+    }
+    res.json(scan);
+  } catch (error) {
+    console.error('Error fetching scan:', error);
+    res.status(500).json({ error: 'Failed to fetch scan' });
+  }
+});
+
 app.get('/api/history/reports', async (req, res) => {
   try {
     const reports = await historyManager.getRecentReports(20);
@@ -1501,6 +1514,9 @@ iotIcsIdsEngine.on('log-entry', (logEntry) => {
   io.emit('iot-ics-log', logEntry);
 });
 
+// Map to track active nmap scans per socket
+const activeScans = new Map();
+
 io.on('connection', (socket) => {
   console.log('New client connected');
   
@@ -1705,6 +1721,14 @@ io.on('connection', (socket) => {
     endpointProtectorHub.markSocketDisconnected(socket.id);
   });
 
+  socket.on('test-connection', (data) => {
+    console.log('[Backend] Test connection received:', data);
+    socket.emit('scan-progress', {
+      status: 'Connection OK',
+      message: { text: `Backend received test signal at ${new Date().toLocaleTimeString()}`, type: 'success' }
+    });
+  });
+
   socket.on('start-scan', async (data) => {
     console.log('Scan started:', data);
     const { target, command, pentester = 'Security Analyst' } = data;
@@ -1744,9 +1768,10 @@ io.on('connection', (socket) => {
 
     let fullOutput = '';
 
-    NmapRunner.executeScan(processedTarget, command, '', async (error, result) => {
+    const nmapProcess = NmapRunner.executeScan(processedTarget, command, '', async (error, result) => {
       if (error && !result) {
-        // Update history with failure
+        // ... failure
+        activeScans.delete(socket.id);
         if (scanEntry) {
           await historyManager.updateScanStatus(scanEntry.id, 'Failed', DateHelper.toISOString());
         }
@@ -1776,6 +1801,7 @@ io.on('connection', (socket) => {
             scanId: scanEntry?.id
           });
         } else if (result.type === 'complete') {
+          activeScans.delete(socket.id);
           const endTime = new Date();
           const duration = Math.round((endTime - startTime) / 1000);
           
@@ -1815,8 +1841,12 @@ io.on('connection', (socket) => {
                         format: 'PDF',
                         size: reportResult.size,
                         filepath: reportResult.filepath,
-                        pentester
+                        pentester,
+                        scanType: command
                     });
+                    
+                    // Generate analysis for the frontend dashboard
+                    const analysis = historyManager.generateAnalysis(fullOutput);
                     
                     socket.emit('scan-progress', {
                         status: 'Completed',
@@ -1825,29 +1855,35 @@ io.on('connection', (socket) => {
                         scanId: scanEntry?.id,
                         reportGenerated: true,
                         reportFilename: reportResult.filename,
-                        reportId: reportResult.reportId
+                        reportId: reportResult.reportId,
+                        analysis: analysis
                     });
                 } else {
+                    const analysis = historyManager.generateAnalysis(fullOutput);
                     socket.emit('scan-progress', {
                         status: 'Completed',
                         progress: 100,
                         message: { text: 'Scan completed successfully! (PDF report generation failed)', type: 'success' },
                         scanId: scanEntry?.id,
-                        reportGenerated: false
+                        reportGenerated: false,
+                        analysis: analysis
                     });
                 }
             } catch (reportError) {
                 console.error('Error generating report:', reportError);
+                const analysis = historyManager.generateAnalysis(fullOutput);
                 socket.emit('scan-progress', {
                     status: 'Completed',
                     progress: 100,
                     message: { text: 'Scan completed successfully! (Report generation failed)', type: 'success' },
                     scanId: scanEntry?.id,
-                    reportGenerated: false
+                    reportGenerated: false,
+                    analysis: analysis
                 });
             }
           
         } else if (result.type === 'error') {
+          activeScans.delete(socket.id);
           // Update history with error
           if (scanEntry) {
             await historyManager.updateScanStatus(
@@ -1866,6 +1902,23 @@ io.on('connection', (socket) => {
         }
       }
     });
+
+    if (nmapProcess) {
+      activeScans.set(socket.id, nmapProcess);
+    }
+  });
+
+  socket.on('stop-scan', () => {
+    console.log('Stop scan requested for socket:', socket.id);
+    const nmapProcess = activeScans.get(socket.id);
+    if (nmapProcess) {
+      nmapProcess.kill('SIGTERM');
+      activeScans.delete(socket.id);
+      socket.emit('scan-progress', {
+        status: 'Stopped',
+        message: { text: 'Scan stopped by user', type: 'warning' }
+      });
+    }
   });
 
   // IDS-specific WebSocket events
@@ -1972,6 +2025,15 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('Client disconnected');
+    
+    // Kill any active scans for this socket
+    const nmapProcess = activeScans.get(socket.id);
+    if (nmapProcess) {
+      console.log('Killing scan for disconnected client:', socket.id);
+      nmapProcess.kill('SIGTERM');
+      activeScans.delete(socket.id);
+    }
+
     // Remove from IDS real-time connections
     idsSystem.removeRealtimeConnection(connectionId);
     // Remove from IoT/ICS IDS real-time connections
