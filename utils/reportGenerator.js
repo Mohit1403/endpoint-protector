@@ -375,7 +375,7 @@ class ReportGenerator {
             const col1X = margin + 5;
             const col2X = margin + contentWidth / 2 + 5;
 
-            currentY = addText(`Penetester: ${safeData.pentester}`, col1X, currentY, contentWidth / 2 - 5, 9, 'normal') + 1;
+            currentY = addText(`Pentester: ${safeData.pentester}`, col1X, currentY, contentWidth / 2 - 5, 9, 'normal') + 1;
             currentY = addText(`Target: ${safeData.target}`, col1X, currentY, contentWidth / 2 - 5, 9, 'normal') + 1;
             currentY = addText(`Scan Date: ${this.formatTimestamp(new Date(safeData.startTime))}`, col1X, currentY, contentWidth / 2 - 5, 9, 'normal') + 1;
 
@@ -1007,8 +1007,20 @@ This report is confidential and intended for authorized personnel only
                     const stats = await fs.stat(filepath);
                     
                     // Extract metadata from filename
-                    const nameParts = file.split('_');
-                    const target = nameParts.length > 2 ? 'Unknown' : 'Unknown';
+                    // Format: ReportType_Target_Date_Time_PentesterName.ext
+                    const baseName = path.parse(file).name;
+                    const nameParts = baseName.split('_');
+                    
+                    let scanType = 'Network Scan';
+                    let target = 'Unknown';
+                    let pentester = 'Security Analyst';
+                    
+                    if (nameParts.length >= 5) {
+                        scanType = nameParts[0].replace(/-/g, ' ');
+                        target = nameParts[1];
+                        // Pentester name is everything from part 4 onwards
+                        pentester = nameParts.slice(4).join(' ').replace(/-/g, ' ');
+                    }
                     
                     reports.push({
                         filename: file,
@@ -1017,7 +1029,8 @@ This report is confidential and intended for authorized personnel only
                         modified: stats.mtime,
                         type: path.extname(file).slice(1).toUpperCase(),
                         target: target,
-                        pentester: 'Security Analyst'
+                        scanType: scanType,
+                        pentester: pentester
                     });
                 }
             }

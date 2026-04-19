@@ -122,7 +122,7 @@ app.post('/api/virustotal/generate-report', async (req, res) => {
     // Create a mock scan data structure for the report generator
     const scanData = {
       target: vtData.data.id || 'Unknown Target',
-      pentester: 'Security Analyst',
+      pentester: vtData.pentester || 'Security Analyst',
         startTime: vtData.scanDate ? DateHelper.toISOString(new Date(vtData.scanDate)) : DateHelper.toISOString(),
       duration: 'N/A',
       scanType: `VirusTotal ${vtData.scanType} Scan`,
@@ -245,6 +245,37 @@ app.get('/api/endpoint-protector/alerts', (req, res) => {
   } catch (error) {
     console.error('Failed to get endpoint alerts:', error);
     res.status(500).json({ error: 'Failed to get endpoint alerts' });
+  }
+});
+
+app.delete('/api/reports/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const reportsDir = storagePaths.getReportsDir();
+    const filepath = path.join(reportsDir, filename);
+    
+    // Security check
+    if (!filename.match(/^[a-zA-Z0-9_\-\.]+$/)) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+    
+    // Check if file exists
+    try {
+      await fs.promises.access(filepath);
+    } catch (e) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    
+    // Delete the file
+    await fs.promises.unlink(filepath);
+    
+    // Also remove from history metadata if it exists
+    await historyManager.deleteReportByFilename(filename);
+    
+    res.json({ success: true, message: 'Report deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting report:', error);
+    res.status(500).json({ error: 'Failed to delete report: ' + error.message });
   }
 });
 
@@ -1519,6 +1550,201 @@ const activeScans = new Map();
 
 io.on('connection', (socket) => {
   console.log('New client connected');
+
+  // REGISTER SCANNER HANDLERS FIRST FOR MAXIMUM RESPONSIVENESS
+  socket.on('test-connection', (data) => {
+    console.log('[Backend] Test connection received:', data);
+    socket.emit('scan-progress', {
+      status: 'Connection OK',
+      message: { text: `Backend received test signal at ${new Date().toLocaleTimeString()}`, type: 'success' }
+    });
+  });
+
+  socket.on('heartbeat', () => {
+    // Keep-alive signal to prevent proxy timeout
+    socket.emit('heartbeat-ack', { ts: Date.now() });
+  });
+
+  socket.on('start-scan', (data) => {
+    console.log('[Backend] Scan start-scan signal received:', data);
+    
+    // Kill any existing scan for this socket before starting a new one
+    const existingProcess = activeScans.get(socket.id);
+    if (existingProcess) {
+      console.log(`[Backend] Killing existing scan for socket ${socket.id} before starting new one`);
+      existingProcess.kill('SIGTERM');
+      activeScans.delete(socket.id);
+    }
+    
+    // 1. IMMEDIATELY acknowledge to the client (NO AWAIT)
+    socket.emit('scan-progress', {
+      status: 'Initializing...',
+      progress: 5,
+      message: { text: '[BACKEND] Request received. Starting engine...', type: 'info' }
+    });
+
+    const { target, command, pentester = 'Security Analyst' } = data;
+    const startTime = new Date();
+    
+    // 2. Start the scan process IMMEDIATELY (NO AWAIT)
+    const processedTarget = NmapRunner.processTarget(target);
+    
+    // 3. Record to history in the background (ASYNCHRONOUSLY)
+    let scanEntry = null;
+    const historyPromise = historyManager.addScan({
+      target: processedTarget,
+      scanType: command,
+      status: 'In Progress',
+      startTime: DateHelper.toISOString(startTime),
+      pentester
+    }).then(entry => {
+      scanEntry = entry;
+      console.log(`[Backend] Scan record created: ${scanEntry?.id}`);
+      // Update client with the real scan ID once we have it
+      socket.emit('scan-progress', { scanId: scanEntry?.id });
+      return entry;
+    }).catch(err => {
+      console.error('[Backend] Failed to record scan history:', err);
+      return null;
+    });
+
+    // 4. Execute the actual Nmap process
+    let fullOutput = '';
+    const nmapProcess = NmapRunner.executeScan(processedTarget, command, '', async (error, result) => {
+      // Ensure we have the scan entry for updates
+      const currentEntry = scanEntry || await historyPromise;
+
+      if (error && !result) {
+        activeScans.delete(socket.id);
+        if (currentEntry) {
+          await historyManager.updateScanStatus(currentEntry.id, 'Failed', DateHelper.toISOString());
+        }
+        return socket.emit('scan-progress', {
+          status: 'Failed',
+          message: { text: error, type: 'error' },
+          scanId: currentEntry?.id
+        });
+      }
+
+      if (result) {
+        if (result.type === 'stdout' || result.type === 'stderr') {
+          fullOutput += result.data;
+        }
+        
+        if (result.type === 'stdout') {
+          socket.emit('scan-progress', {
+            status: 'Scanning...',
+            message: { text: result.data, type: 'info' },
+            scanId: currentEntry?.id
+          });
+        } else if (result.type === 'stderr') {
+          socket.emit('scan-progress', {
+            status: 'Scanning...',
+            message: { text: result.data, type: 'warning' },
+            scanId: currentEntry?.id
+          });
+        } else if (result.type === 'complete') {
+          activeScans.delete(socket.id);
+          const endTime = new Date();
+          const duration = Math.round((endTime - startTime) / 1000);
+          
+          if (currentEntry) {
+            await historyManager.updateScanStatus(
+              currentEntry.id, 
+              'Completed', 
+              DateHelper.toISOString(endTime),
+              fullOutput
+            );
+          }
+          
+          // Generate report
+          try {
+            const scanData = {
+              target: processedTarget,
+              scanType: command,
+              status: 'Completed',
+              startTime: startTime,
+              endTime: endTime,
+              duration: `${duration}s`,
+              pentester: pentester,
+              output: fullOutput
+            };
+            
+            const reportResult = await reportGenerator.saveReport(scanData, 'pdf');
+            if (reportResult.success) {
+              await historyManager.addReport({
+                reportId: reportResult.reportId,
+                scanId: currentEntry?.id,
+                filename: reportResult.filename,
+                target: processedTarget,
+                format: 'PDF',
+                size: reportResult.size,
+                filepath: reportResult.filepath,
+                pentester,
+                scanType: command
+              });
+              
+              const analysis = historyManager.generateAnalysis(fullOutput);
+              socket.emit('scan-progress', {
+                status: 'Completed',
+                progress: 100,
+                message: { text: `Scan completed! PDF report: ${reportResult.filename}`, type: 'success' },
+                scanId: currentEntry?.id,
+                reportGenerated: true,
+                reportFilename: reportResult.filename,
+                reportId: reportResult.reportId,
+                analysis: analysis
+              });
+            } else {
+              const analysis = historyManager.generateAnalysis(fullOutput);
+              socket.emit('scan-progress', {
+                status: 'Completed',
+                progress: 100,
+                message: { text: 'Scan completed (PDF failed)', type: 'success' },
+                scanId: currentEntry?.id,
+                analysis: analysis
+              });
+            }
+          } catch (reportError) {
+            console.error('Report error:', reportError);
+            const analysis = historyManager.generateAnalysis(fullOutput);
+            socket.emit('scan-progress', {
+              status: 'Completed',
+              progress: 100,
+              message: { text: 'Scan completed (Report error)', type: 'success' },
+              scanId: currentEntry?.id,
+              analysis: analysis
+            });
+          }
+        } else if (result.type === 'error') {
+          activeScans.delete(socket.id);
+          if (currentEntry) {
+            await historyManager.updateScanStatus(currentEntry.id, 'Failed', DateHelper.toISOString(), fullOutput);
+          }
+          socket.emit('scan-progress', {
+            status: 'Failed',
+            message: { text: result.data, type: 'error' },
+            scanId: currentEntry?.id
+          });
+        }
+      }
+    });
+    
+    activeScans.set(socket.id, nmapProcess);
+  });
+
+  socket.on('stop-scan', () => {
+    console.log('Stop scan requested for socket:', socket.id);
+    const nmapProcess = activeScans.get(socket.id);
+    if (nmapProcess) {
+      nmapProcess.kill('SIGTERM');
+      activeScans.delete(socket.id);
+      socket.emit('scan-progress', {
+        status: 'Stopped',
+        message: { text: 'Scan stopped by user', type: 'warning' }
+      });
+    }
+  });
   
   // Register client for IDS real-time updates
   const connectionId = socket.id;
@@ -1714,210 +1940,6 @@ io.on('connection', (socket) => {
       }
     } else {
       console.warn(`[Endpoint Protector] Agent ${agentId} not found`);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    endpointProtectorHub.markSocketDisconnected(socket.id);
-  });
-
-  socket.on('test-connection', (data) => {
-    console.log('[Backend] Test connection received:', data);
-    socket.emit('scan-progress', {
-      status: 'Connection OK',
-      message: { text: `Backend received test signal at ${new Date().toLocaleTimeString()}`, type: 'success' }
-    });
-  });
-
-  socket.on('start-scan', async (data) => {
-    console.log('Scan started:', data);
-    const { target, command, pentester = 'Security Analyst' } = data;
-    const startTime = new Date();
-    let scanEntry = null;
-
-    // Validate target
-    if (!NmapRunner.validateTarget(target)) {
-      return socket.emit('scan-progress', {
-        status: 'Failed',
-        message: { text: 'Invalid target format', type: 'error' }
-      });
-    }
-
-    // Process target to extract domain from URL if needed
-    const processedTarget = NmapRunner.processTarget(target);
-    
-    // Add scan to history
-    try {
-      scanEntry = await historyManager.addScan({
-        target: processedTarget,
-        scanType: command,
-        status: 'In Progress',
-        startTime: DateHelper.toISOString(startTime),
-        pentester
-      });
-    } catch (error) {
-      console.error('Error adding scan to history:', error);
-    }
-    
-    socket.emit('scan-progress', {
-      status: 'Starting scan...',
-      progress: 0,
-      message: { text: `Starting scan of ${processedTarget} (from ${target})...`, type: 'info' },
-      scanId: scanEntry?.id
-    });
-
-    let fullOutput = '';
-
-    const nmapProcess = NmapRunner.executeScan(processedTarget, command, '', async (error, result) => {
-      if (error && !result) {
-        // ... failure
-        activeScans.delete(socket.id);
-        if (scanEntry) {
-          await historyManager.updateScanStatus(scanEntry.id, 'Failed', DateHelper.toISOString());
-        }
-        
-        return socket.emit('scan-progress', {
-          status: 'Failed',
-          message: { text: error, type: 'error' },
-          scanId: scanEntry?.id
-        });
-      }
-
-      if (result) {
-        if (result.type === 'stdout' || result.type === 'stderr') {
-          fullOutput += result.data;
-        }
-        
-        if (result.type === 'stdout') {
-          socket.emit('scan-progress', {
-            status: 'Scanning...',
-            message: { text: result.data, type: 'info' },
-            scanId: scanEntry?.id
-          });
-        } else if (result.type === 'stderr') {
-          socket.emit('scan-progress', {
-            status: 'Scanning...',
-            message: { text: result.data, type: 'warning' },
-            scanId: scanEntry?.id
-          });
-        } else if (result.type === 'complete') {
-          activeScans.delete(socket.id);
-          const endTime = new Date();
-          const duration = Math.round((endTime - startTime) / 1000);
-          
-          // Update history with completion
-          if (scanEntry) {
-            await historyManager.updateScanStatus(
-              scanEntry.id, 
-              'Completed', 
-              DateHelper.toISOString(endTime),
-              fullOutput
-            );
-          }
-          
-            // Auto-generate professional PDF report
-            try {
-                const scanData = {
-                    target: processedTarget,
-                    scanType: command,
-                    status: 'Completed',
-                    startTime: startTime,
-                    endTime: endTime,
-                    duration: `${duration}s`,
-                    pentester: pentester,
-                    output: fullOutput
-                };
-                
-                // Generate PDF report by default
-                const reportResult = await reportGenerator.saveReport(scanData, 'pdf');
-                
-                if (reportResult.success) {
-                    // Add report to history
-                    await historyManager.addReport({
-                        reportId: reportResult.reportId,
-                        scanId: scanEntry?.id,
-                        filename: reportResult.filename,
-                        target: processedTarget,
-                        format: 'PDF',
-                        size: reportResult.size,
-                        filepath: reportResult.filepath,
-                        pentester,
-                        scanType: command
-                    });
-                    
-                    // Generate analysis for the frontend dashboard
-                    const analysis = historyManager.generateAnalysis(fullOutput);
-                    
-                    socket.emit('scan-progress', {
-                        status: 'Completed',
-                        progress: 100,
-                        message: { text: `Scan completed! Professional PDF report generated: ${reportResult.filename}`, type: 'success' },
-                        scanId: scanEntry?.id,
-                        reportGenerated: true,
-                        reportFilename: reportResult.filename,
-                        reportId: reportResult.reportId,
-                        analysis: analysis
-                    });
-                } else {
-                    const analysis = historyManager.generateAnalysis(fullOutput);
-                    socket.emit('scan-progress', {
-                        status: 'Completed',
-                        progress: 100,
-                        message: { text: 'Scan completed successfully! (PDF report generation failed)', type: 'success' },
-                        scanId: scanEntry?.id,
-                        reportGenerated: false,
-                        analysis: analysis
-                    });
-                }
-            } catch (reportError) {
-                console.error('Error generating report:', reportError);
-                const analysis = historyManager.generateAnalysis(fullOutput);
-                socket.emit('scan-progress', {
-                    status: 'Completed',
-                    progress: 100,
-                    message: { text: 'Scan completed successfully! (Report generation failed)', type: 'success' },
-                    scanId: scanEntry?.id,
-                    reportGenerated: false,
-                    analysis: analysis
-                });
-            }
-          
-        } else if (result.type === 'error') {
-          activeScans.delete(socket.id);
-          // Update history with error
-          if (scanEntry) {
-            await historyManager.updateScanStatus(
-              scanEntry.id, 
-              'Failed', 
-              DateHelper.toISOString(),
-              fullOutput
-            );
-          }
-          
-          socket.emit('scan-progress', {
-            status: 'Failed',
-            message: { text: result.data, type: 'error' },
-            scanId: scanEntry?.id
-          });
-        }
-      }
-    });
-
-    if (nmapProcess) {
-      activeScans.set(socket.id, nmapProcess);
-    }
-  });
-
-  socket.on('stop-scan', () => {
-    console.log('Stop scan requested for socket:', socket.id);
-    const nmapProcess = activeScans.get(socket.id);
-    if (nmapProcess) {
-      nmapProcess.kill('SIGTERM');
-      activeScans.delete(socket.id);
-      socket.emit('scan-progress', {
-        status: 'Stopped',
-        message: { text: 'Scan stopped by user', type: 'warning' }
-      });
     }
   });
 

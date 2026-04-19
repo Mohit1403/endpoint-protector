@@ -350,6 +350,23 @@ class HistoryManager {
         return false;
     }
 
+    async deleteReportByFilename(filename) {
+        try {
+            const history = await this.loadHistory();
+            const index = history.reports.findIndex(report => report.filename === filename);
+            
+            if (index !== -1) {
+                history.reports.splice(index, 1);
+                history.statistics.totalReports = Math.max(0, history.statistics.totalReports - 1);
+                await this.saveHistory(history);
+                return true;
+            }
+        } catch (error) {
+            console.error('Error deleting report by filename:', error);
+        }
+        return false;
+    }
+
     async clearHistory() {
         try {
             const emptyHistory = {

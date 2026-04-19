@@ -1,3 +1,55 @@
+// Global delete confirmation with captcha
+window.showCaptchaConfirm = function(options) {
+    const { title, text, onConfirm } = options;
+    const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+    const confirmBtn = document.getElementById('confirm-delete-btn');
+    const answerInput = document.getElementById('captcha-answer');
+    const questionEl = document.getElementById('captcha-question');
+    const textEl = document.getElementById('delete-confirm-text');
+    const modalTitle = document.querySelector('#deleteConfirmModal .modal-title');
+
+    // Reset modal
+    if (modalTitle) modalTitle.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${title || 'Security Confirmation'}`;
+    if (textEl) textEl.textContent = text || 'Are you sure you want to delete this item?';
+    if (answerInput) answerInput.value = '';
+    
+    // Generate random captcha
+    const num1 = Math.floor(Math.random() * 10) + 1;
+    const num2 = Math.floor(Math.random() * 10) + 1;
+    const result = num1 + num2;
+    if (questionEl) questionEl.textContent = `${num1} + ${num2} = ?`;
+
+    // Handle confirm button
+    confirmBtn.onclick = function() {
+        const userAnswer = parseInt(answerInput.value);
+        if (userAnswer === result) {
+            modal.hide();
+            if (onConfirm) onConfirm();
+        } else {
+            answerInput.classList.add('is-invalid');
+            setTimeout(() => answerInput.classList.remove('is-invalid'), 1000);
+            showNotification('Incorrect answer. Please solve the captcha correctly.', 'error');
+            
+            // Generate new captcha
+            const newNum1 = Math.floor(Math.random() * 10) + 1;
+            const newNum2 = Math.floor(Math.random() * 10) + 1;
+            const newResult = newNum1 + newNum2;
+            questionEl.textContent = `${newNum1} + ${newNum2} = ?`;
+            confirmBtn.onclick = function() { // Recursive-like update for the new captcha result
+                if (parseInt(answerInput.value) === newResult) {
+                    modal.hide();
+                    if (onConfirm) onConfirm();
+                } else {
+                    showNotification('Incorrect answer again. Try again.', 'error');
+                }
+            };
+        }
+    };
+
+    modal.show();
+    setTimeout(() => answerInput.focus(), 500);
+};
+
 // Define showSection in global scope
 function showSection(sectionId) {
     console.log('Navigating to:', sectionId);
@@ -1018,14 +1070,62 @@ document.addEventListener('DOMContentLoaded', () => {
 
             showScanDashboard(selectedScan.analysis);
             updateScanInfoDisplay();
+            
+            // Show the delete button when a past scan is loaded
+            const deleteDashBtn = document.getElementById('delete-scan-dash-btn');
+            if (deleteDashBtn) {
+                deleteDashBtn.style.display = 'inline-block';
+                deleteDashBtn.onclick = () => window.deleteScanFromDash(selectedScan.id);
+            }
+            
             showNotification(`Loaded scan results for: ${selectedScan.target}`, 'success');
         }
+    }
+
+    window.deleteScanFromDash = async function(scanId) {
+        window.showCaptchaConfirm({
+            title: 'Delete Scan Results',
+            text: 'Are you sure you want to delete this scan and its analytical results? This will remove it from the history.',
+            onConfirm: async () => {
+                try {
+                    const response = await fetch(`/api/history/scans/${scanId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        showNotification('Scan record deleted successfully', 'success');
+                        
+                        // Reset the dashboard view
+                        const scanDashboard = document.getElementById('scan-dashboard');
+                        if (scanDashboard) scanDashboard.style.display = 'none';
+                        
+                        // Refresh the selectors and history
+                        loadHistory(); 
+                        loadPastScansFromServer();
+                        
+                        // Hide the delete button
+                        const deleteDashBtn = document.getElementById('delete-scan-dash-btn');
+                        if (deleteDashBtn) deleteDashBtn.style.display = 'none';
+                    } else {
+                        showNotification('Failed to delete scan record', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting scan from dash:', error);
+                    showNotification('Error deleting scan record', 'error');
+                }
+            }
+        });
     }
 
     function showCurrentScan() {
         if (currentScanAnalysis) {
             showScanDashboard(currentScanAnalysis);
             updateScanInfoDisplay();
+            
+            // Hide delete button for current active scan
+            const deleteDashBtn = document.getElementById('delete-scan-dash-btn');
+            if (deleteDashBtn) deleteDashBtn.style.display = 'none';
+            
             showNotification('Showing current scan results', 'info');
         } else {
             showNotification('No current scan results available', 'warning');
@@ -2235,6 +2335,15 @@ document.addEventListener('DOMContentLoaded', () => {
             appendOutput(`[FRONTEND] Initiating scan for: ${target}`, 'info');
             appendOutput(`[FRONTEND] Command: nmap ${command}`, 'info');
             
+            // SECURITY/PERFORMANCE: Ensure socket is warm and connected
+            if (!socket.connected) {
+                console.warn('[Frontend] Socket disconnected, attempting manual reconnect');
+                socket.connect();
+            }
+
+            // Warm up the path with a small signal before the big scan payload
+            socket.emit('test-connection', { timestamp: Date.now(), purpose: 'warm-up' });
+
             console.log('[Frontend] Emitting start-scan:', { target, command, pentester: pentesterName });
             socket.emit('start-scan', { target, command, pentester: pentesterName });
             
@@ -2255,6 +2364,13 @@ document.addEventListener('DOMContentLoaded', () => {
         appendOutput('[FRONTEND] Manual socket test emitted', 'info');
     };
 
+    // KEEP-ALIVE: Send a heartbeat every 25 seconds to prevent Render hibernation
+    setInterval(() => {
+        if (socket.connected) {
+            socket.emit('heartbeat', { ts: Date.now() });
+        }
+    }, 25000);
+
     const targetInput = document.getElementById('target-input');
     if (targetInput) {
         targetInput.addEventListener('blur', function() {
@@ -2270,6 +2386,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const suggestion = document.getElementById('target-validation-suggestion');
             if (feedback) feedback.textContent = '';
             if (suggestion) suggestion.classList.add('d-none');
+        });
+    }
+
+    const pentesterNameInput = document.getElementById('pentester-name');
+    if (pentesterNameInput) {
+        pentesterNameInput.addEventListener('blur', function() {
+            const name = this.value.trim();
+            if (name) {
+                sessionPentesters.add(name);
+                // Trigger filter update with current reports
+                fetch('/api/reports')
+                    .then(response => response.json())
+                    .then(reports => populateReportFilters(reports));
+            }
         });
     }
 
@@ -2652,6 +2782,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td><code>${scan.scanType}</code></td>
                     <td><span class="status-indicator ${statusClass}"></span>${scan.status}</td>
                     <td>
+                        <div class="small text-muted mb-1"><i class="fas fa-user-shield me-1"></i>${scan.pentester || 'Security Analyst'}</div>
                         <button class="btn btn-sm btn-outline-primary" onclick="viewScanDetails('${scan.id}')">
                             <i class="fas fa-eye"></i> Details
                         </button>
@@ -2705,16 +2836,21 @@ document.addEventListener('DOMContentLoaded', () => {
                                         Created: ${created}
                                     </small>
                                 </p>
-                                <p class="card-text mb-0">
-                                    <small class="text-info"><i class="fas fa-user-shield"></i> By: <strong>${report.pentester || 'Security Analyst'}</strong></small>
+                                <p class="card-text mb-0 mt-2">
+                                    <span class="text-info bg-dark-soft p-1 rounded border border-info border-opacity-25 small">
+                                        <i class="fas fa-user-shield me-1"></i> Pentester: <strong>${report.pentester || 'Security Analyst'}</strong>
+                                    </span>
                                 </p>
                             </div>
                             <div class="col-md-4 text-end">
                                 <button class="btn btn-primary btn-sm me-1" onclick="viewReport('${report.filename}')" title="View Report">
                                     <i class="fas fa-eye"></i> View
                                 </button>
-                                <button class="btn btn-success btn-sm" onclick="downloadReportFile('${report.filename}')" title="Download Report">
+                                <button class="btn btn-success btn-sm me-1" onclick="downloadReportFile('${report.filename}')" title="Download Report">
                                     <i class="fas fa-download"></i> Download
+                                </button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteReportFile('${report.filename}')" title="Delete Report">
+                                    <i class="fas fa-trash"></i>
                                 </button>
                             </div>
                         </div>
@@ -2726,27 +2862,40 @@ document.addEventListener('DOMContentLoaded', () => {
         populateReportFilters(reports);
     }
 
+    let sessionPentesters = new Set(['Security Analyst']);
+
     function populateReportFilters(reports) {
         const pentesterSelect = document.getElementById('report-filter-pentester');
         const scanTypeSelect = document.getElementById('report-filter-scan-type');
 
         if (!pentesterSelect || !scanTypeSelect) return;
 
-        // Get unique pentesters and scan types from the reports data
-        const pentesters = [...new Set(reports.map(r => r.pentester).filter(p => p && p !== ''))];
+        // Get unique pentesters from the reports data
+        reports.forEach(r => {
+            if (r.pentester && r.pentester.trim() !== '') {
+                sessionPentesters.add(r.pentester);
+            }
+        });
+        
+        // Also capture the current name from the scan form
+        const currentPentesterName = document.getElementById('pentester-name')?.value?.trim();
+        if (currentPentesterName) {
+            sessionPentesters.add(currentPentesterName);
+        }
+
         const scanTypes = [...new Set(reports.map(r => r.scanType).filter(s => s && s !== ''))];
 
         // Store current selections to restore them if they still exist
         const currentPentester = pentesterSelect.value;
         const currentScanType = scanTypeSelect.value;
 
-        pentesterSelect.innerHTML = '<option value="">All pentesters</option>';
-        pentesters.sort().forEach(p => {
+        pentesterSelect.innerHTML = '<option value="">All Pentesters</option>';
+        [...sessionPentesters].sort().forEach(p => {
             const selected = (p === currentPentester) ? 'selected' : '';
             pentesterSelect.innerHTML += `<option value="${p}" ${selected}>${p}</option>`;
         });
 
-        scanTypeSelect.innerHTML = '<option value="">All scan types</option>';
+        scanTypeSelect.innerHTML = '<option value="">All Scan Types</option>';
         scanTypes.sort().forEach(s => {
             const selected = (s === currentScanType) ? 'selected' : '';
             scanTypeSelect.innerHTML += `<option value="${s}" ${selected}>${s}</option>`;
@@ -2854,7 +3003,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function viewReport(filename) {
+    window.viewReport = async function(filename) {
         try {
             window.open(`/api/reports/${filename}`, '_blank');
         } catch (error) {
@@ -2863,7 +3012,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function downloadReportFile(filename) {
+    window.downloadReportFile = async function(filename) {
         try {
             const link = document.createElement('a');
             link.href = `/api/reports/${filename}`;
@@ -2877,28 +3026,56 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function deleteScan(scanId) {
-        if (!confirm('Are you sure you want to delete this scan record?')) {
-            return;
-        }
+    window.deleteReportFile = async function(filename) {
+        window.showCaptchaConfirm({
+            title: 'Delete Report',
+            text: `Are you sure you want to delete the report "${filename}"?`,
+            onConfirm: async () => {
+                try {
+                    const response = await fetch(`/api/reports/${filename}`, {
+                        method: 'DELETE'
+                    });
 
-        try {
-            const response = await fetch(`/api/history/scans/${scanId}`, {
-                method: 'DELETE'
-            });
-
-            if (response.ok) {
-                loadHistory(); // Refresh the history table
-            } else {
-                alert('Error deleting scan record');
+                    if (response.ok) {
+                        showNotification('Report deleted successfully', 'success');
+                        loadReports(); // Refresh the list
+                    } else {
+                        const error = await response.json();
+                        showNotification('Error deleting report: ' + (error.error || 'Unknown error'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting report:', error);
+                    showNotification('Error deleting report', 'error');
+                }
             }
-        } catch (error) {
-            console.error('Error deleting scan:', error);
-            alert('Error deleting scan record');
-        }
+        });
     }
 
-    function viewScanDetails(scanId) {
+    window.deleteScan = async function(scanId) {
+        window.showCaptchaConfirm({
+            title: 'Delete Scan History',
+            text: `Are you sure you want to delete the scan record for "${scanId}"?`,
+            onConfirm: async () => {
+                try {
+                    const response = await fetch(`/api/history/scans/${scanId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        loadHistory(); // Refresh the history table
+                        showNotification('Scan history record deleted', 'success');
+                    } else {
+                        alert('Error deleting scan record');
+                    }
+                } catch (error) {
+                    console.error('Error deleting scan:', error);
+                    alert('Error deleting scan record');
+                }
+            }
+        });
+    }
+
+    window.viewScanDetails = function(scanId) {
         // You can implement a modal or detailed view here
         console.log('View details for scan:', scanId);
         alert(`Scan details view for ${scanId} - This could open a detailed modal!`);
@@ -2927,10 +3104,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            // Get pentester name from the main scan form if available
+            const pentesterName = document.getElementById('pentester-name')?.value?.trim() || 'Security Analyst';
+            
             const response = await fetch('/api/virustotal/generate-report', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(lastVirusTotalResult)
+                body: JSON.stringify({
+                    ...lastVirusTotalResult,
+                    pentester: pentesterName
+                })
             });
 
             if (response.ok) {
@@ -3607,7 +3790,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="mb-3">
                                     <label for="auditorName" class="form-label">Security Analyst/Auditor Name</label>
                                     <input type="text" class="form-control" id="auditorName" 
-                                           placeholder="Enter your name" value="Security Analyst">
+                                           placeholder="Enter your name" value="${document.getElementById('pentester-name')?.value?.trim() || 'Security Analyst'}">
                                 </div>
                                 
                                 <div class="mb-3">

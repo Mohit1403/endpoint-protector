@@ -1,6 +1,238 @@
 {
   "scans": [
     {
+      "id": "SCAN_1776591102558_x2zcm7",
+      "target": "amazon.com",
+      "scanType": "-sT -T4",
+      "status": "Completed",
+      "startTime": "2026-04-19T09:31:41.249Z",
+      "pentester": "Security Analyst",
+      "outputSize": 1150,
+      "hostsFound": 1,
+      "portsFound": 2,
+      "reportGenerated": false,
+      "timestamp": "2026-04-19T09:31:42.558Z",
+      "endTime": "2026-04-19T09:32:39.264Z",
+      "duration": "58s",
+      "analysis": {
+        "services": [
+          {
+            "port": "80",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "http",
+            "version": "http"
+          },
+          {
+            "port": "443",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "https",
+            "version": "https"
+          }
+        ],
+        "vulnerabilities": [
+          "http (Port 80)",
+          "https (Port 443)"
+        ],
+        "hostsFound": 0,
+        "portsOpen": 2,
+        "summary": "Found 2 open ports. 2 security considerations detected. 2 medium-risk services."
+      }
+    },
+    {
+      "id": "SCAN_1776589829434_3ia1nq",
+      "target": "amazon.com",
+      "scanType": "-sT -T4",
+      "status": "Completed",
+      "startTime": "2026-04-19T09:10:29.303Z",
+      "pentester": "Security Analyst",
+      "outputSize": 1150,
+      "hostsFound": 1,
+      "portsFound": 2,
+      "reportGenerated": false,
+      "timestamp": "2026-04-19T09:10:29.434Z",
+      "endTime": "2026-04-19T09:11:10.413Z",
+      "duration": "41s",
+      "analysis": {
+        "services": [
+          {
+            "port": "80",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "http",
+            "version": "http"
+          },
+          {
+            "port": "443",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "https",
+            "version": "https"
+          }
+        ],
+        "vulnerabilities": [
+          "http (Port 80)",
+          "https (Port 443)"
+        ],
+        "hostsFound": 0,
+        "portsOpen": 2,
+        "summary": "Found 2 open ports. 2 security considerations detected. 2 medium-risk services."
+      }
+    },
+    {
+      "id": "SCAN_1776588854484_um8ytp",
+      "target": "amazon.com",
+      "scanType": "-sT -T4",
+      "status": "Completed",
+      "startTime": "2026-04-19T08:54:13.928Z",
+      "pentester": "Shreya",
+      "outputSize": 814,
+      "hostsFound": 1,
+      "portsFound": 2,
+      "reportGenerated": false,
+      "timestamp": "2026-04-19T08:54:14.484Z",
+      "endTime": "2026-04-19T08:54:55.054Z",
+      "duration": "41s",
+      "analysis": {
+        "services": [
+          {
+            "port": "80",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "http",
+            "version": "http"
+          },
+          {
+            "port": "443",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "https",
+            "version": "https"
+          }
+        ],
+        "vulnerabilities": [
+          "http (Port 80)",
+          "https (Port 443)"
+        ],
+        "hostsFound": 0,
+        "portsOpen": 2,
+        "summary": "Found 2 open ports. 2 security considerations detected. 2 medium-risk services."
+      }
+    },
+    {
+      "id": "SCAN_1776588010028_fkujs8",
+      "target": "example.com",
+      "scanType": "-sT -T4",
+      "status": "Completed",
+      "startTime": "2026-04-19T08:40:09.799Z",
+      "pentester": "Shubham Pandey",
+      "outputSize": 1338,
+      "hostsFound": 1,
+      "portsFound": 4,
+      "reportGenerated": false,
+      "timestamp": "2026-04-19T08:40:10.028Z",
+      "endTime": "2026-04-19T08:41:09.965Z",
+      "duration": "60s",
+      "analysis": {
+        "services": [
+          {
+            "port": "80",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "http",
+            "version": "http"
+          },
+          {
+            "port": "443",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "https",
+            "version": "https"
+          },
+          {
+            "port": "8080",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "http-proxy",
+            "version": "http-proxy"
+          },
+          {
+            "port": "8443",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "https-alt",
+            "version": "https-alt"
+          }
+        ],
+        "vulnerabilities": [
+          "http (Port 80)",
+          "https (Port 443)",
+          "http-proxy (Port 8080)",
+          "https-alt (Port 8443)"
+        ],
+        "hostsFound": 0,
+        "portsOpen": 4,
+        "summary": "Found 4 open ports. 4 security considerations detected. 4 medium-risk services."
+      }
+    },
+    {
+      "id": "SCAN_1776587334404_aiku9b",
+      "target": "example.com",
+      "scanType": "-sT -T4",
+      "status": "Completed",
+      "startTime": "2026-04-19T08:28:54.400Z",
+      "pentester": "Shubham Pandey",
+      "outputSize": 1272,
+      "hostsFound": 1,
+      "portsFound": 4,
+      "reportGenerated": false,
+      "timestamp": "2026-04-19T08:28:54.404Z",
+      "endTime": "2026-04-19T08:30:00.102Z",
+      "duration": "66s",
+      "analysis": {
+        "services": [
+          {
+            "port": "80",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "http",
+            "version": "http"
+          },
+          {
+            "port": "443",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "https",
+            "version": "https"
+          },
+          {
+            "port": "8080",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "http-proxy",
+            "version": "http-proxy"
+          },
+          {
+            "port": "8443",
+            "protocol": "tcp",
+            "state": "open",
+            "service": "https-alt",
+            "version": "https-alt"
+          }
+        ],
+        "vulnerabilities": [
+          "http (Port 80)",
+          "https (Port 443)",
+          "http-proxy (Port 8080)",
+          "https-alt (Port 8443)"
+        ],
+        "hostsFound": 0,
+        "portsOpen": 4,
+        "summary": "Found 4 open ports. 4 security considerations detected. 4 medium-risk services."
+      }
+    },
+    {
       "id": "SCAN_1776203632934_0v5esd",
       "target": "amazon.com",
       "scanType": "-sT -T4",
@@ -555,6 +787,50 @@
   ],
   "reports": [
     {
+      "id": "PENTEST_1776591159565_lnw43yeg7",
+      "scanId": "SCAN_1776591102558_x2zcm7",
+      "filename": "PenetrationTest_amazon.com_2026-04-19_1501_Security_Analyst.pdf",
+      "target": "amazon.com",
+      "format": "PDF",
+      "created": "2026-04-19T09:32:39.883Z",
+      "pentester": "Security Analyst",
+      "filepath": "C:\\Users\\amank\\Downloads\\endpoint-protector\\reports\\PenetrationTest_amazon.com_2026-04-19_1501_Security_Analyst.pdf",
+      "scanType": "-sT -T4"
+    },
+    {
+      "id": "PENTEST_1776588285758_842clm55t",
+      "scanId": "SCAN_1776588247577_x4g712",
+      "filename": "PenetrationTest_example.com_2026-04-19_1414_Shubham_Pandey.pdf",
+      "target": "example.com",
+      "format": "PDF",
+      "created": "2026-04-19T08:44:45.784Z",
+      "pentester": "Shubham Pandey",
+      "filepath": "C:\\Users\\amank\\Downloads\\endpoint-protector\\reports\\PenetrationTest_example.com_2026-04-19_1414_Shubham_Pandey.pdf",
+      "scanType": "--top-ports 1000 -sT -T4"
+    },
+    {
+      "id": "PENTEST_1776588069975_xzdtxc72m",
+      "scanId": "SCAN_1776588010028_fkujs8",
+      "filename": "PenetrationTest_example.com_2026-04-19_1410_Shubham_Pandey.pdf",
+      "target": "example.com",
+      "format": "PDF",
+      "created": "2026-04-19T08:41:10.522Z",
+      "pentester": "Shubham Pandey",
+      "filepath": "C:\\Users\\amank\\Downloads\\endpoint-protector\\reports\\PenetrationTest_example.com_2026-04-19_1410_Shubham_Pandey.pdf",
+      "scanType": "-sT -T4"
+    },
+    {
+      "id": "PENTEST_1776587400194_0okzvee2i",
+      "scanId": "SCAN_1776587334404_aiku9b",
+      "filename": "PenetrationTest_example.com_2026-04-19_1358_Shubham_Pandey.pdf",
+      "target": "example.com",
+      "format": "PDF",
+      "created": "2026-04-19T08:30:00.573Z",
+      "pentester": "Shubham Pandey",
+      "filepath": "C:\\Users\\amank\\Downloads\\endpoint-protector\\reports\\PenetrationTest_example.com_2026-04-19_1358_Shubham_Pandey.pdf",
+      "scanType": "-sT -T4"
+    },
+    {
       "id": "PENTEST_1776203669486_ojwopeqdp",
       "scanId": "SCAN_1776203632934_0v5esd",
       "filename": "PenetrationTest_amazon.com_2026-04-14_0323_Shubham_Pandey.pdf",
@@ -768,10 +1044,10 @@
     }
   ],
   "statistics": {
-    "totalScans": 25,
+    "totalScans": 30,
     "successfulScans": 0,
     "failedScans": 0,
-    "totalReports": 21,
+    "totalReports": 25,
     "uniqueTargets": [
       "etechgs.com",
       "example.com",
