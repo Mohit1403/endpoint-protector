@@ -475,6 +475,8 @@
                                         data-bs-target="#file-pane" type="button" role="tab">File</button>
                                 <button class="nav-link" id="url-tab" data-bs-toggle="tab" 
                                         data-bs-target="#url-pane" type="button" role="tab">URL</button>
+                                <button class="nav-link" id="ip-tab" data-bs-toggle="tab" 
+                                        data-bs-target="#ip-pane" type="button" role="tab">IP</button>
                                 <button class="nav-link" id="hash-tab" data-bs-toggle="tab" 
                                         data-bs-target="#hash-pane" type="button" role="tab">Hash</button>
                             </div>
@@ -501,6 +503,19 @@
                                         </div>
                                         <button type="submit" class="btn btn-danger w-100 vt-scan-btn">
                                             <i class="fas fa-globe"></i> Scan URL
+                                        </button>
+                                    </form>
+                                </div>
+
+                                <div class="tab-pane fade" id="ip-pane" role="tabpanel">
+                                    <form id="ip-scan-form">
+                                        <div class="mb-3">
+                                            <label for="ip-input" class="form-label">IP Address</label>
+                                            <input type="text" class="form-control" id="ip-input" 
+                                                   placeholder="e.g., 8.8.8.8" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-danger w-100 vt-scan-btn">
+                                            <i class="fas fa-network-wired"></i> Scan IP
                                         </button>
                                     </form>
                                 </div>

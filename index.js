@@ -110,6 +110,21 @@ app.post('/api/virustotal/hash', async (req, res) => {
   }
 });
 
+app.post('/api/virustotal/ip', async (req, res) => {
+  try {
+    const { ip } = req.body;
+    if (!ip) {
+      return res.status(400).json({ error: 'IP is required' });
+    }
+
+    const result = await vtApi.scanIp(ip);
+    res.json(result);
+  } catch (error) {
+    console.error('VirusTotal IP scan error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Route to generate VirusTotal PDF report
 app.post('/api/virustotal/generate-report', async (req, res) => {
   try {

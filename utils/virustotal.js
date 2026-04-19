@@ -196,6 +196,11 @@ class VirusTotalAPI {
         }
 
         try {
+            // Try V3 API first
+            if (this.preferV3) {
+                return await this.getFileReportV3(hash);
+            }
+
             const params = new URLSearchParams({
                 apikey: this.apiKey,
                 resource: hash
@@ -216,6 +221,68 @@ class VirusTotalAPI {
             }
             return this.simulateHashResult(hash);
         }
+    }
+
+    async scanIp(ip) {
+        if (!this.apiKey) {
+            console.log('VirusTotal API key not available, using simulation');
+            return this.simulateIpResult(ip);
+        }
+
+        try {
+            const response = await fetch(`${this.baseUrlV3}/ip_addresses/${ip}`, {
+                headers: {
+                    'x-apikey': this.apiKey
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            return this.enrichV3Response(result);
+        } catch (error) {
+            console.error('VirusTotal IP scan error:', error);
+            if (this.apiKey) {
+                throw error;
+            }
+            return this.simulateIpResult(ip);
+        }
+    }
+
+    simulateIpResult(ip) {
+        const malicious = Math.floor(Math.random() * 2);
+        const harmless = 70;
+        const suspicious = Math.floor(Math.random() * 2);
+        
+        return {
+            data: {
+                type: 'ip_address',
+                id: ip,
+                attributes: {
+                    last_analysis_date: Math.floor(Date.now() / 1000),
+                    last_analysis_stats: {
+                        harmless: harmless,
+                        malicious: malicious,
+                        suspicious: suspicious,
+                        undetected: 0
+                    },
+                    last_analysis_results: {
+                        "Abusix": { "category": "harmless", "result": "clean", "method": "blacklist", "engine_name": "Abusix" },
+                        "AlienVault": { "category": "harmless", "result": "clean", "method": "blacklist", "engine_name": "AlienVault" }
+                    },
+                    as_owner: "Example ISP",
+                    country: "US",
+                    reputation: 10
+                }
+            },
+            meta: {
+                ip_info: {
+                    ip: ip
+                }
+            }
+        };
     }
 
     async getFileReport(resource) {

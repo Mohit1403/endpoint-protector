@@ -123,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const decryptForm = document.getElementById('decrypt-form');
     const fileScanForm = document.getElementById('file-scan-form');
     const urlScanForm = document.getElementById('url-scan-form');
+    const ipScanForm = document.getElementById('ip-scan-form');
     const hashScanForm = document.getElementById('hash-scan-form');
     const outputContainer = document.getElementById('output-container');
     const cryptoResult = document.getElementById('crypto-result');
@@ -2605,7 +2606,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 data: data.data,
                 scanType: scanType,
                 scanDate: scanDate,
-                stats: stats
+                stats: stats,
+                pentester: document.getElementById('pentester-name')?.value?.trim() || 'Security Analyst'
             };
         } else {
             const resultCard = document.createElement('div');
@@ -2640,7 +2642,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 data: data,
                 scanType: scanType,
                 scanDate: new Date().toLocaleString(),
-                stats: null
+                stats: null,
+                pentester: document.getElementById('pentester-name')?.value?.trim() || 'Security Analyst'
             };
         }
     }
@@ -2688,6 +2691,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 vtResults.appendChild(showResult('danger', 'URL scan failed: ' + error.message));
             });
     });
+
+    if (ipScanForm) {
+        ipScanForm.addEventListener('submit', event => {
+            event.preventDefault();
+            const ip = document.getElementById('ip-input').value;
+            
+            vtResults.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Scanning IP address...</p></div>';
+
+            fetch('/api/virustotal/ip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    displayVirusTotalResult(data, 'ip');
+                })
+                .catch(error => {
+                    vtResults.innerHTML = '';
+                    vtResults.appendChild(showResult('danger', 'IP scan failed: ' + error.message));
+                });
+        });
+    }
 
     hashScanForm.addEventListener('submit', event => {
         event.preventDefault();
@@ -3104,8 +3130,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            // Get pentester name from the main scan form if available
-            const pentesterName = document.getElementById('pentester-name')?.value?.trim() || 'Security Analyst';
+            // Get pentester name from the result or current form
+            const pentesterName = lastVirusTotalResult.pentester || document.getElementById('pentester-name')?.value?.trim() || 'Security Analyst';
             
             const response = await fetch('/api/virustotal/generate-report', {
                 method: 'POST',
